@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from barn.lock import LockManager
-from barn.models import Base
+from barn.models import Base, metadata
 from barn.scheduler import Scheduler
 
 logging.basicConfig(
@@ -30,9 +30,11 @@ def main() -> None:
     # engine = create_engine('postgresql+psycopg://rds:sqlsql@host.docker.internal/barn')
     session_ctx = sessionmaker(engine)
 
-    with engine.begin():
-        Base.metadata.drop_all(engine)
-        Base.metadata.create_all(engine)
+    # with engine.begin():
+    #     Base.metadata.drop_all(engine)
+    #     Base.metadata.create_all(engine)
+    #     metadata.drop_all(engine)
+    #     metadata.create_all(engine)
 
     # from psycopg_pool import ConnectionPool
     # pool = ConnectionPool("host=host.docker.internal port=5432 user=rds password=sqlsql dbname=barn sslmode=disable")
@@ -62,7 +64,7 @@ def main() -> None:
     #     session.commit()
     #     logging.info("e: next_ts=%s", e.next_ts.isoformat(timespec="milliseconds"))
 
-    lm = LockManager(session_ctx)
+    lm = LockManager(engine, session_ctx)
     lm.run()
 
     # sh = Scheduler(session_ctx)

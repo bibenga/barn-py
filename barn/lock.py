@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, UTC
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import update, insert
+from sqlalchemy import select, update, insert, Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from barn.models import Lock
+from barn.models import Lock, lock_table
 
 log = logging.getLogger(__name__)
 
@@ -16,12 +16,14 @@ log = logging.getLogger(__name__)
 class LockManager:
     def __init__(
         self,
+        engine: Engine,
         session_ctx: sessionmaker[Session],
         name: str = "barn",
         interval: int = 5,
         expiration: int = 30,
         hostname: str = '',
     ) -> None:
+        self._engine = engine
         self._session_ctx = session_ctx
         self._hostname = hostname or str(uuid4())
         self._name = name
@@ -51,13 +53,22 @@ class LockManager:
     def _create(self) -> None:
         log.info("checking the lock %r existence...", self._name)
         try:
+            with self._engine.connect() as c:
+                log.info("1")
+                res = c.execute(select(lock_table).where(lock_table.c.name == self._name)).one_or_none()
+                log.info("2: %s", res)
+                if res is None:
+                    log.info("3")
+                    stmt = insert(lock_table).values(name=self._name)
+                    c.commit()
+
             with self._session_ctx() as session:
                 l = session.get(Lock, self._name)
                 if l is None:
                     log.info("the lock %r is not found, try to create it...", self._name)
                     stmt = insert(Lock).values(
                         name=self._name,
-                    ).returning(Lock)
+                    )
                     session.execute(stmt)
                     session.commit()
             log.info("the lock %r is created", self._name)

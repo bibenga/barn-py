@@ -1,10 +1,12 @@
 from datetime import datetime, UTC
 from typing import Any, Optional
 
+from sqlalchemy import MetaData
 from sqlalchemy import JSON, TIMESTAMP, func
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import expression
+from sqlalchemy import Table, Column, Integer, String, TIMESTAMP
 
 
 class Base(DeclarativeBase):
@@ -45,3 +47,13 @@ class Entry(Base):
     next_ts: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     last_ts: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     message: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON(none_as_null=True))
+
+
+metadata = MetaData()
+lock_table = Table(
+    "barn_lock",
+    metadata,
+    Column("name", String(), primary_key=True),
+    Column("locked_at", TIMESTAMP(timezone=True), nullable=True),
+    Column("locked_by", String(), nullable=True),
+)
