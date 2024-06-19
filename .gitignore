@@ -163,4 +163,5 @@ cython_debug/
 
 .DS_Store
 devcontainer.json
-launch.json
+.devcontainer/*
+.vscode/*
