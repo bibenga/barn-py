@@ -52,9 +52,9 @@ metadata = MetaData()
 lock_table = Table(
     "barn_lock",
     metadata,
-    Column("name", String(), key="name", primary_key=True),
-    Column("locked_at", TIMESTAMP(timezone=True), key="locked_at", nullable=True),
-    Column("locked_by", String(), key="locked_by", nullable=True),
+    Column("name", String(), key="name", primary_key=True, comment="lock name"),
+    Column("locked_at", TIMESTAMP(timezone=True), key="locked_at", nullable=True, comment="when it was captured"),
+    Column("locked_by", String(), key="locked_by", nullable=True, comment="who captured it"),
 )
 
 barn_entry = Table(
@@ -67,4 +67,6 @@ barn_entry = Table(
     Column("next_ts", TIMESTAMP(timezone=True), nullable=True),
     Column("last_ts", TIMESTAMP(timezone=True), nullable=True),
     Column("message", JSON(none_as_null=True), nullable=True),
+    Column("object_type", String(), nullable=True),
+    Column("object_id", String(), nullable=True),
 )

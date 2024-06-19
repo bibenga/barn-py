@@ -164,3 +164,5 @@ cython_debug/
 .DS_Store
 .devcontainer/*
 .vscode/*
+*.sqlite3
+*.sqlite3-journal
