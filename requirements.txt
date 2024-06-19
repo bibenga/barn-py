@@ -1,0 +1,6 @@
+croniter
+
+sqlalchemy
+
+psycopg[binary, pool]
+pytest
