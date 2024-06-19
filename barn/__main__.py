@@ -1,7 +1,6 @@
 import logging
 import logging.config
 
-from psycopg_pool import ConnectionPool
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -27,26 +26,27 @@ _l = logging.getLogger(__name__)
 def main() -> None:
     _l.info("barn")
 
-    # engine = create_engine('sqlite:///barn/_db.db')
-    engine = create_engine('postgresql+psycopg://rds:sqlsql@host.docker.internal/barn')
+    engine = create_engine('sqlite:///db.sqlite3')
+    # engine = create_engine('postgresql+psycopg://rds:sqlsql@host.docker.internal/barn')
     session_ctx = sessionmaker(engine)
 
     with engine.begin():
         Base.metadata.drop_all(engine)
         Base.metadata.create_all(engine)
 
-    pool = ConnectionPool("host=host.docker.internal port=5432 user=rds password=sqlsql dbname=barn sslmode=disable")
-    with pool.connection() as conn:
-        _l.info(">")
-        with conn.cursor() as cur:
-            cur.execute("SET TIME ZONE UTC;")
-            cur.execute("select current_timestamp, 1, ''")
-            record = cur.fetchone()
-            _l.info("- record: %r", record)
-            # for record in cur:
-            #     _l.info("- record: %r", record)
-        _l.info("<")
-    pool.close()
+    # from psycopg_pool import ConnectionPool
+    # pool = ConnectionPool("host=host.docker.internal port=5432 user=rds password=sqlsql dbname=barn sslmode=disable")
+    # with pool.connection() as conn:
+    #     _l.info(">")
+    #     with conn.cursor() as cur:
+    #         cur.execute("SET TIME ZONE UTC;")
+    #         cur.execute("select current_timestamp, 1, ''")
+    #         record = cur.fetchone()
+    #         _l.info("- record: %r", record)
+    #         # for record in cur:
+    #         #     _l.info("- record: %r", record)
+    #     _l.info("<")
+    # pool.close()
 
     # with session_ctx() as session:
     #     cron = "* * * * * */5"

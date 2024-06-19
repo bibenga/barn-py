@@ -162,6 +162,5 @@ cython_debug/
 #.idea/
 
 .DS_Store
-devcontainer.json
 .devcontainer/*
 .vscode/*
