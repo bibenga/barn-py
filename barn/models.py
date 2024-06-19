@@ -26,9 +26,8 @@ class Lock(Base):
     __table_args__ = {}
 
     name: Mapped[str] = mapped_column(primary_key=True)
-    locked_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(UTC),
-                                                server_default=func.current_timestamp())
-    locked_by: Mapped[str] = mapped_column()
+    locked_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    locked_by: Mapped[Optional[str]] = mapped_column(nullable=True)
 
 
 class Entry(Base):

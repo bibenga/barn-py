@@ -1,10 +1,11 @@
 import logging
 import time
 from datetime import datetime, timedelta, UTC
+from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import update, insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from barn.models import Lock
@@ -27,86 +28,108 @@ class LockManager:
         self._interval = interval
         self._expiration = timedelta(seconds=expiration)
         self._is_locked = False
+        self._locked_at: Optional[datetime] = None
 
     def run(self) -> None:
         log.info("> %s", self._hostname)
 
-        log.info("checking the lock %r existence...", self._name)
-        with self._session_ctx() as session:
-            l = session.get(Lock, self._name)
-            if l is None:
-                log.info("the lock %r is not found, try to create it...", self._name)
-                stmt = insert(Lock).values(
-                    name=self._name,
-                    locked_at=datetime.now(UTC) - timedelta(days=300),
-                    locked_by=""
-                ).on_conflict_do_nothing(
-                    index_elements=(Lock.name,),
-                ).returning(Lock)
-                res = session.execute(stmt)
-                l = res.one().Lock
-                if l.locked_by == "":
-                    log.info("the lock %r is created", self._name)
-                    session.commit()
-                else:
-                    log.info("the lock %r was created by someone", self._name)
-            else:
-                log.info("the lock %r already exists", self._name)
+        self._create()
 
         while True:
-            with self._session_ctx() as session:
-                l = session.get_one(Lock, self._name)
-                log.info("the lock %r is locked by %r at %s", self._name, l.locked_by, l.locked_at)
-                if self._is_locked:
-                    if l.locked_by == self._name:
-                        stmt = update(Lock).where(
-                            Lock.name == self._name,
-                            Lock.locked_by == self._name,
-                            Lock.locked_at == l.locked_at,
-                        ).values(
-                            locked_at=datetime.now(UTC),
-                        )
-                        res = session.execute(stmt)
-                        if res.rowcount != 1:
-                            log.warning("the lock %r was captured unexpectedly by someone", self._name)
-                            self._is_locked = False
-                            self._on_released()
-                        else:
-                            log.info("the lock %r is still captured", self._name)
-                            session.commit()
-                    else:
-                        log.warning("the lock %r was captured by someone", self._name)
-                        self._is_locked = False
-                        self._on_released()
-                elif (datetime.now(UTC)-l.locked_at) > self._expiration:
-                    log.info("the lock %r is rotten", self._name)
-                    stmt = update(Lock).where(
-                        Lock.name == self._name,
-                        Lock.locked_by == l.locked_by,
-                        Lock.locked_at == l.locked_at,
-                    ).values(
-                        locked_by=self._name,
-                        locked_at=datetime.now(UTC),
-                    )
-                    res = session.execute(stmt)
-                    if res.rowcount == 1:
-                        log.info("the lock %r is captured", self._name)
-                        session.commit()
-                        self._is_locked = True
-                        self._on_captured()
+            if self._is_locked:
+                if self._update():
+                    pass
+                else:
+                    self._on_released()
+            else:
+                if self._try_capture():
+                    self._on_captured()
+                else:
+                    pass
             time.sleep(self._interval)
 
     def _create(self) -> None:
-        pass
-
-    def _update(self) -> bool:
-        return True
+        log.info("checking the lock %r existence...", self._name)
+        try:
+            with self._session_ctx() as session:
+                l = session.get(Lock, self._name)
+                if l is None:
+                    log.info("the lock %r is not found, try to create it...", self._name)
+                    stmt = insert(Lock).values(
+                        name=self._name,
+                    ).returning(Lock)
+                    session.execute(stmt)
+                    session.commit()
+            log.info("the lock %r is created", self._name)
+        except IntegrityError:
+            log.info("the lock %r exists", self._name)
+            pass
 
     def _try_capture(self) -> bool:
-        return False
+        log.info("try to capture the lock %r", self._name)
+        with self._session_ctx() as session:
+            locked_at = datetime.now(UTC)
+            rotten_ts = datetime.now(UTC) - self._expiration
+            stmt = update(Lock).where(
+                Lock.name == self._name,
+                Lock.locked_at.is_(None) | (Lock.locked_at < rotten_ts),
+            ).values(
+                locked_at=locked_at,
+                locked_by=self._hostname,
+            )
+            res = session.execute(stmt)
+            if res.rowcount == 1:
+                log.info("the lock %r is captured", self._name)
+                self._is_locked = True
+                self._locked_at = locked_at
+            session.commit()
+        return self._is_locked
+
+    def _update(self) -> bool:
+        log.info("update the lock %r", self._name)
+        with self._session_ctx() as session:
+            locked_at = datetime.now(UTC)
+            stmt = update(Lock).where(
+                Lock.name == self._name,
+                Lock.locked_at == Lock.locked_at,
+                Lock.locked_by == self._hostname,
+            ).values(
+                locked_at=locked_at,
+            )
+            res = session.execute(stmt)
+            if res.rowcount == 1:
+                log.info("the lock %r is still captured", self._name)
+                self._is_locked = True
+                self._locked_at = locked_at
+            else:
+                log.info("the lock %r is released", self._name)
+                self._is_locked = False
+                self._locked_at = None
+            session.commit()
+        return self._is_locked
+
+    def _release(self) -> None:
+        log.info("release the lock %r", self._name)
+        with self._session_ctx() as session:
+            stmt = update(Lock).where(
+                Lock.name == self._name,
+                Lock.locked_at == Lock.locked_at,
+                Lock.locked_by == self._hostname,
+            ).values(
+                locked_at=None,
+                locked_by=None,
+            )
+            res = session.execute(stmt)
+            self._is_locked = False
+            self._locked_at = None
+            if res.rowcount == 1:
+                log.info("the lock %r is released", self._name)
+            else:
+                log.info("the lock %r cannot be released", self._name)
+            session.commit()
 
     def _on_captured(self) -> None:
-        log.info("lock %r is captured", self._name)
+        log.info("ON: the lock %r is captured", self._name)
 
     def _on_released(self) -> None:
-        log.info("lock %r is released", self._name)
+        log.info("ON: the lock %r is released", self._name)
