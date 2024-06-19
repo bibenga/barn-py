@@ -26,15 +26,15 @@ _l = logging.getLogger(__name__)
 def main() -> None:
     _l.info("barn")
 
-    engine = create_engine('sqlite:///db.sqlite3')
-    # engine = create_engine('postgresql+psycopg://rds:sqlsql@host.docker.internal/barn')
+    # engine = create_engine('sqlite:///db.sqlite3')
+    engine = create_engine('postgresql+psycopg://rds:sqlsql@host.docker.internal/barn')
     session_ctx = sessionmaker(engine)
 
-    # with engine.begin():
-    #     Base.metadata.drop_all(engine)
-    #     Base.metadata.create_all(engine)
-    #     metadata.drop_all(engine)
-    #     metadata.create_all(engine)
+    with engine.begin():
+        # Base.metadata.drop_all(engine)
+        # Base.metadata.create_all(engine)
+        metadata.drop_all(engine)
+        metadata.create_all(engine)
 
     # from psycopg_pool import ConnectionPool
     # pool = ConnectionPool("host=host.docker.internal port=5432 user=rds password=sqlsql dbname=barn sslmode=disable")

@@ -1,12 +1,10 @@
-from datetime import datetime, UTC
+from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import MetaData
-from sqlalchemy import JSON, TIMESTAMP, func
+from sqlalchemy import JSON, TIMESTAMP, Boolean, Column, Integer, MetaData, String, Table
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import expression
-from sqlalchemy import Table, Column, Integer, String, TIMESTAMP
 
 
 class Base(DeclarativeBase):
@@ -50,10 +48,23 @@ class Entry(Base):
 
 
 metadata = MetaData()
+
 lock_table = Table(
     "barn_lock",
     metadata,
-    Column("name", String(), primary_key=True),
-    Column("locked_at", TIMESTAMP(timezone=True), nullable=True),
-    Column("locked_by", String(), nullable=True),
+    Column("name", String(), key="name", primary_key=True),
+    Column("locked_at", TIMESTAMP(timezone=True), key="locked_at", nullable=True),
+    Column("locked_by", String(), key="locked_by", nullable=True),
+)
+
+barn_entry = Table(
+    "barn_entry",
+    metadata,
+    Column("id", Integer(), primary_key=True),
+    Column("name", String(), unique=True),
+    Column("cron", String(), nullable=True),
+    Column("is_active", Boolean(), default=False, server_default=expression.false()),
+    Column("next_ts", TIMESTAMP(timezone=True), nullable=True),
+    Column("last_ts", TIMESTAMP(timezone=True), nullable=True),
+    Column("message", JSON(none_as_null=True), nullable=True),
 )
