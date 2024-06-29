@@ -7,12 +7,12 @@ from uuid import uuid4
 from django.db import transaction
 
 from .models import Lock
-from .signals import lock_changed
+from .signals import leader_changed
 
 log = logging.getLogger(__name__)
 
 
-class Locker:
+class LeaderElector:
     def __init__(
         self,
         lock_name: str,
@@ -75,8 +75,7 @@ class Locker:
 
     @transaction.atomic
     def _acquire(self) -> bool:
-        log.info("try to capture the lock %r", self._lock_name)
-
+        log.debug("try to capture the lock %r", self._lock_name)
         locked_at = datetime.now(UTC)
         lock = Lock.objects.select_for_update().filter(name=self._lock_name).first()
         if lock is None:
@@ -94,8 +93,8 @@ class Locker:
             self._locked_at = locked_at
             log.info("the lock %r is created and acquired", self._lock_name)
         else:
-            log.info("the lock state is: locked_at=%s, owner=%s, created=%r",
-                     lock.locked_at, lock.owner, created)
+            log.debug("the lock state is: locked_at=%s, owner=%s, created=%r",
+                      lock.locked_at, lock.owner, created)
             rotten_ts = datetime.now(UTC) - self._expiration
             if not lock.locked_at or lock.locked_at < rotten_ts:
                 lock.locked_at = locked_at
@@ -105,20 +104,20 @@ class Locker:
                 self._locked_at = locked_at
                 log.info("the lock %r is acquired", self._lock_name)
             else:
-                log.info("the lock %r cannot be acquired", self._lock_name)
+                log.info("the lock %r cannot be acquired (it was acquired at %s by %r)",
+                         self._lock_name, lock.locked_at, lock.owner)
         return self._is_locked
 
     @transaction.atomic
     def _confirm(self) -> bool:
-        log.info("confirm the lock %r", self._lock_name)
-
+        log.debug("confirm the lock %r", self._lock_name)
         lock = Lock.objects.select_for_update().filter(name=self._lock_name).first()
         if lock is None:
             self._is_locked = False
             self._locked_at = None
-            log.info("the lock was deleted by someone")
+            log.warning("the lock was deleted by someone")
         else:
-            log.info("the lock state is: locked_at=%s, owner=%s", lock.locked_at, lock.owner)
+            log.debug("the lock state is: locked_at=%s, owner=%s", lock.locked_at, lock.owner)
             if lock.locked_at == self._locked_at and lock.owner == self._hostname:
                 self._locked_at = datetime.now(UTC)
                 lock.locked_at = self._locked_at
@@ -127,18 +126,18 @@ class Locker:
             else:
                 self._is_locked = False
                 self._locked_at = None
-                log.info("the lock %r is released", self._lock_name)
+                log.warning("the lock %r is released", self._lock_name)
 
         return self._is_locked
 
     @transaction.atomic
     def _release(self) -> None:
-        log.info("release the lock %r", self._lock_name)
+        log.debug("release the lock %r", self._lock_name)
         lock = Lock.objects.select_for_update().filter(name=self._lock_name).first()
         self._is_locked = False
         self._locked_at = None
         if lock is None:
-            log.info("the lock was deleted by someone")
+            log.warning("the lock was deleted by someone")
         else:
             log.info("the lock state is: locked_at=%s, owner=%s", lock.locked_at, lock.owner)
             if lock.locked_at == self._locked_at and lock.owner == self._hostname:
@@ -147,12 +146,11 @@ class Locker:
                 lock.save()
                 log.info("the lock %r is released", self._lock_name)
             else:
-                log.info("the lock %r cannot be released", self._lock_name)
+                log.warning("the lock %r cannot be released because it owned by someone (it was acquired at %s by %r)",
+                            self._lock_name, lock.locked_at, lock.owner)
 
     def _on_acquired(self) -> None:
-        log.debug("ON: the lock %r is acquired", self._lock_name)
-        lock_changed.send(sender=self, lock=self._lock_name, locked=True)
+        leader_changed.send(sender=self, lock=self._lock_name, is_leader=True)
 
     def _on_released(self) -> None:
-        log.debug("the lock %r is released", self._lock_name)
-        lock_changed.send(sender=self, lock=self._lock_name, locked=False)
+        leader_changed.send(sender=self, lock=self._lock_name, is_leader=False)

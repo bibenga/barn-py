@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
-from ...locker import Locker
+from ...locker import LeaderElector
 
 
 class Command(BaseCommand):
@@ -22,8 +22,8 @@ class Command(BaseCommand):
             self._run(**options)
 
     def _run(self, **options):
-        locker = Locker(
+        elector = LeaderElector(
             "barn",
             use_signals=not options["use_reloader"],
         )
-        locker.run()
+        elector.run()

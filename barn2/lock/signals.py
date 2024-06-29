@@ -1,6 +1,6 @@
 from django.dispatch import Signal
 
-lock_changed = Signal()
+leader_changed = Signal()
 
 schedule_execute = Signal()
 
