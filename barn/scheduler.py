@@ -35,7 +35,7 @@ class SimpleScheduler:
     def _run(self) -> None:
         log.info("stated")
         try:
-            # self._process()
+            self._process()
             while not self._stop_event.is_set():
                 now = datetime.now(UTC)
                 iter = croniter(self._cron, now)
@@ -46,7 +46,7 @@ class SimpleScheduler:
                 log.info("sleep for %s", sleep_seconds)
                 if self._stop_event.wait(sleep_seconds.total_seconds()):
                     break
-                # self._process()
+                self._process()
         finally:
             log.info("finished")
 
