@@ -48,7 +48,7 @@ class LeaderElector:
             self._thread.join(5)
 
     def _run(self) -> None:
-        log.info("stated")
+        log.info("stated (hostname is %r)", self._hostname)
         try:
             self._process()
             while not self._stop_event.wait(self._interval):
