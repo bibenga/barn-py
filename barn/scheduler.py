@@ -41,6 +41,7 @@ class SimpleScheduler:
                 iter = croniter(self._cron, now)
                 next_run_at = iter.get_next(datetime)
                 sleep_seconds = next_run_at - now
+                # add some jitter
                 sleep_seconds += timedelta(seconds=random() / 5)
                 log.info("sleep for %s", sleep_seconds)
                 if self._stop_event.wait(sleep_seconds.total_seconds()):
