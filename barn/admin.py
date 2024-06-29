@@ -3,7 +3,7 @@ import json
 from django.contrib import admin
 from django.utils.safestring import mark_safe
 
-from .models import Lock, Task, Schedule
+from .models import Lock, Schedule, Task
 
 
 @admin.register(Lock)
@@ -15,12 +15,12 @@ class LockAdmin(admin.ModelAdmin):
 
 @admin.register(Schedule)
 class ScheduleAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "is_active", "cron", "next_run_at")
+    list_display = ("id", "name", "func", "is_active", "cron", "next_run_at")
     list_filter = ("is_active",)
     ordering = ("-next_run_at",)
-    search_fields = ("name",)
+    search_fields = ("name", "func")
     date_hierarchy = "next_run_at"
-    readonly_fields = ["args_pretty"]
+    readonly_fields = ("args_pretty", )
 
     def args_pretty(self, instance):
         """Function to display pretty version of our data"""
@@ -36,7 +36,7 @@ class TaskAdmin(admin.ModelAdmin):
     ordering = ("-created",)
     search_fields = ("func",)
     date_hierarchy = "created"
-    readonly_fields = ["args_pretty", "result_pretty"]
+    readonly_fields = ("args_pretty", "result_pretty")
 
     def args_pretty(self, instance):
         """Function to display pretty version of our data"""
