@@ -4,8 +4,10 @@ from threading import Event
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
+from barn2.lock.elector import LeaderElector
+
 from ...worker import Worker
-from ...scheduler import SimpleScheduler
+from ...scheduler import SimpleScheduler, Scheduler
 
 log = logging.getLogger(__name__)
 
@@ -21,15 +23,6 @@ class Command(BaseCommand):
         )
 
         parser.add_argument(
-            "-w",
-            "--worker",
-            dest="worker",
-            type=str,
-            default="simple",
-            choices=["none", "simple"]
-        )
-
-        parser.add_argument(
             "-s",
             "--scheduler",
             dest="scheduler",
@@ -39,11 +32,12 @@ class Command(BaseCommand):
         )
 
         parser.add_argument(
-            "-l",
-            "--lock-name",
-            dest="lock_name",
+            "-w",
+            "--worker",
+            dest="worker",
             type=str,
-            default="barn",
+            default="simple",
+            choices=["none", "simple"]
         )
 
         parser.add_argument(
@@ -54,13 +48,6 @@ class Command(BaseCommand):
             type=str,
         )
 
-        parser.add_argument(
-            "-i",
-            "--interval",
-            dest="interval",
-            type=int,
-        )
-
     def handle(self, *args, **options):
         # log.info("handle: %r", options)
         use_reloader = options["use_reloader"]
@@ -69,27 +56,52 @@ class Command(BaseCommand):
         else:
             self._run(**options)
 
-    def _run(self, use_reloader: bool, **options):
+    def _run(self, **options):
         use_signals = not options["use_reloader"]
+        scheduler_type = options["scheduler"]
+        worker_type = options["worker"]
+        task_filter = options["filter"]
+
+        if scheduler_type == "none" and worker_type == "none":
+            log.warning("nothing to run")
+            return
+
+        self._stop_event = Event()
+        log.info("start")
 
         if use_signals:
             signal.signal(signal.SIGTERM, self._sig_handler)
             signal.signal(signal.SIGINT, self._sig_handler)
 
-        self._stop_event = Event()
-        log.info("start")
+        scheduler: SimpleScheduler | Scheduler | None = None
+        if scheduler_type == "simple":
+            scheduler = SimpleScheduler()
+            scheduler.start()
+        elif scheduler_type == "complex":
+            scheduler = Scheduler()
 
-        worker = Worker()
-        worker.start()
+        worker: Worker | None = None
+        if worker_type == "simple":
+            worker = Worker(task_filter=task_filter)
+            worker.start()
 
-        scheduler = SimpleScheduler()
-        scheduler.start()
+        elector: LeaderElector | None = None
+        if scheduler_type == "complex":
+            elector = LeaderElector()
+            elector.start()
 
         while not self._stop_event.wait(5):
             log.debug("I am alive")
 
-        scheduler.stop()
-        worker.stop()
+        if elector:
+            elector.stop()
+
+        if worker:
+            worker.stop()
+
+        if scheduler:
+            scheduler.stop()
+
         log.info("stop")
 
     def _sig_handler(self, signum, frame) -> None:

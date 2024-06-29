@@ -1,5 +1,4 @@
 import logging
-import signal
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 from uuid import uuid4
@@ -16,12 +15,10 @@ class LeaderElector:
     def __init__(
         self,
         lock_name: str,
-        use_signals: bool = True,
         interval: float | int = 5,
         expiration: int | timedelta = 30,
         hostname: str = '',
     ) -> None:
-        self._use_signals = use_signals
         self._lock_name = lock_name
         self._interval = interval
         self._expiration = expiration if isinstance(expiration, timedelta) \
@@ -32,25 +29,16 @@ class LeaderElector:
 
         self._thread: Thread | None = None
         self._stop_event = Event()
-        self._stoped_event = Event()
-
-    def run(self) -> None:
-        if self._use_signals:
-            signal.signal(signal.SIGTERM, self._sig_handler)
-            signal.signal(signal.SIGINT, self._sig_handler)
-        self._run()
 
     def start(self) -> None:
+        self._stop_event.clear()
         self._thread = Thread(name="locker", target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        self._stoped_event.wait(5)
-
-    def _sig_handler(self, signum, frame) -> None:
-        log.info("got signal - %s", signal.strsignal(signum))
-        self._stop_event.set()
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+            self._thread.join(5)
 
     def _run(self) -> None:
         log.info("stated")
@@ -62,7 +50,6 @@ class LeaderElector:
             if self._is_locked:
                 self._release()
                 self._on_released()
-            self._stoped_event.set()
             log.info("finished")
 
     def _process(self) -> None:

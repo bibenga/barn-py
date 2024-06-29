@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
-from ...locker import LeaderElector
+from ...elector import LeaderElector
 
 
 class Command(BaseCommand):

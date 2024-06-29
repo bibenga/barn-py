@@ -1,5 +1,4 @@
 import logging
-import signal
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 
@@ -17,32 +16,21 @@ log = logging.getLogger(__name__)
 class SimpleScheduler:
     def __init__(
         self,
-        use_signals: bool = True,
         interval: float | int = 5,
     ) -> None:
-        self._use_signals = use_signals
         self._interval = interval
         self._thread: Thread | None = None
         self._stop_event = Event()
-        self._stoped_event = Event()
-
-    def run(self) -> None:
-        if self._use_signals:
-            signal.signal(signal.SIGTERM, self._sig_handler)
-            signal.signal(signal.SIGINT, self._sig_handler)
-        self._run()
-
-    def _sig_handler(self, signum, frame) -> None:
-        log.info("got signal - %s", signal.strsignal(signum))
-        self._stop_event.set()
 
     def start(self) -> None:
+        self._stop_event.clear()
         self._thread = Thread(name="scheduler", target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        self._stoped_event.wait(5)
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+            self._thread.join(5)
 
     def _run(self) -> None:
         log.info("stated")
@@ -51,7 +39,6 @@ class SimpleScheduler:
             while not self._stop_event.wait(self._interval):
                 self._process()
         finally:
-            self._stoped_event.set()
             log.info("finished")
 
     def _process(self) -> None:
@@ -130,34 +117,21 @@ class SimpleScheduler:
 class Scheduler:
     def __init__(
         self,
-        use_signals: bool = True,
-        interval: float | int = 5,
     ) -> None:
-        self._use_signals = use_signals
-        self._interval = interval
         self._thread: Thread | None = None
         self._stop_event = Event()
-        self._stoped_event = Event()
         self._reload_schedule = Schedule(pk=-1, name="<reload>", cron="* * * * * */10")
         self._schedules: dict[int, Schedule] = {}
 
-    def run(self) -> None:
-        if self._use_signals:
-            signal.signal(signal.SIGTERM, self._sig_handler)
-            signal.signal(signal.SIGINT, self._sig_handler)
-        self._run()
-
-    def _sig_handler(self, signum, frame) -> None:
-        log.info("got signal - %s", signal.strsignal(signum))
-        self._stop_event.set()
-
     def start(self) -> None:
+        self._stop_event.clear()
         self._thread = Thread(name="scheduler", target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        self._stoped_event.wait(5)
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+            self._thread.join(5)
 
     def _run(self) -> None:
         iter = croniter(self._reload_schedule.cron, datetime.now(UTC))

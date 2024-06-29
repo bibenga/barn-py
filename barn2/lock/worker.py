@@ -1,10 +1,11 @@
 import logging
 import signal
+import traceback
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
-import traceback
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils.module_loading import import_string
 
 from .models import Task
@@ -15,29 +16,23 @@ log = logging.getLogger(__name__)
 class Worker:
     def __init__(
         self,
-        use_signals: bool = True,
+        task_filter: list[str] | None = None,
         interval: float | int = 5,
-        func_filter: str | None = None
     ) -> None:
-        self._use_signals = use_signals
+        self._task_filter = task_filter
         self._interval = interval
         self._thread: Thread | None = None
         self._stop_event = Event()
-        self._stoped_event = Event()
-
-    def run(self) -> None:
-        if self._use_signals:
-            signal.signal(signal.SIGTERM, self._sig_handler)
-            signal.signal(signal.SIGINT, self._sig_handler)
-        self._run()
 
     def start(self) -> None:
+        self._stop_event.clear()
         self._thread = Thread(name="broker", target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        self._stoped_event.wait(5)
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+            self._thread.join(5)
 
     def _run(self) -> None:
         log.info("stated")
@@ -48,7 +43,6 @@ class Worker:
                 self._process()
                 self._delete_old()
         finally:
-            self._stoped_event.set()
             log.info("finished")
 
     def _sig_handler(self, signum, frame) -> None:
@@ -59,6 +53,11 @@ class Worker:
         while not self._stop_event.is_set():
             with transaction.atomic():
                 task_qs = Task.objects.filter(is_processed=False).order_by("created", "id")
+                if self._task_filter:
+                    f = Q()
+                    for name in self._task_filter:
+                        f |= Q(func__startswith=name)
+                    task_qs = task_qs.filter(f)
                 task = task_qs.select_for_update(skip_locked=True).first()
                 if not task:
                     log.info("no pending task is found")
