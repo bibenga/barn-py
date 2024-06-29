@@ -1,12 +1,16 @@
 import logging
+from random import random
 import signal
 import traceback
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
 
+from croniter import croniter
 from django.db import transaction
 from django.db.models import Q
 from django.utils.module_loading import import_string
+
+from barn.conf import Conf
 
 from .models import Task
 
@@ -17,10 +21,9 @@ class Worker:
     def __init__(
         self,
         task_filter: list[str] | None = None,
-        interval: float | int = 5,
     ) -> None:
+        self._cron = "* * * * * */5"
         self._task_filter = task_filter
-        self._interval = interval
         self._thread: Thread | None = None
         self._stop_event = Event()
 
@@ -39,7 +42,17 @@ class Worker:
         try:
             self._process()
             self._delete_old()
-            while not self._stop_event.wait(self._interval):
+            while not self._stop_event.is_set():
+                now = datetime.now(UTC)
+                iter = croniter(self._cron, now)
+                next_run_at = iter.get_next(datetime)
+                sleep_seconds = next_run_at - now
+                # add some jitter
+                # if Conf.USE_JITTER:
+                #     sleep_seconds += timedelta(seconds=random() / 5)
+                log.info("sleep for %s", sleep_seconds)
+                if self._stop_event.wait(sleep_seconds.total_seconds()):
+                    break
                 self._process()
                 self._delete_old()
         finally:
