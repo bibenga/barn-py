@@ -1,187 +1,311 @@
 import logging
-import time
 from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
 
 from croniter import croniter
-from sqlalchemy import delete, insert, select, update
-from sqlalchemy.orm import Session, sessionmaker
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 
-from barn.models import Entry
+from .models import Schedule, Task
+from .signals import schedule_execute
 
 log = logging.getLogger(__name__)
+
+
+class SimpleScheduler:
+    def __init__(
+        self,
+        interval: float | int = 5,
+    ) -> None:
+        self._interval = interval
+        self._thread: Thread | None = None
+        self._stop_event = Event()
+
+    def start(self) -> None:
+        self._stop_event.clear()
+        self._thread = Thread(name="scheduler", target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+            self._thread.join(5)
+
+    def _run(self) -> None:
+        log.info("stated")
+        try:
+            self._process()
+            while not self._stop_event.wait(self._interval):
+                self._process()
+        finally:
+            log.info("finished")
+
+    def _process(self) -> None:
+        while not self._stop_event.is_set():
+            with transaction.atomic():
+                schedule_qs = Schedule.objects.filter(
+                    Q(next_run_at__isnull=True) | Q(next_run_at__lt=timezone.now()),
+                    is_active=True,
+                ).order_by("next_run_at", "id")
+                schedule = schedule_qs.select_for_update(skip_locked=True).first()
+                if not schedule:
+                    log.info("no pending schedule is found")
+                    break
+
+                self._process_schedule(schedule)
+
+    def _process_schedule(self, schedule: Schedule) -> None:
+        log.info("found a schedule %s", schedule.pk)
+
+        if not schedule.next_run_at and not schedule.cron:
+            log.info("the schedule %s is an invalid", schedule.pk)
+            schedule.is_active = False
+            schedule.save(update_fields=["is_active"])
+            return
+
+        now = datetime.now(UTC)
+        if not schedule.next_run_at:
+            try:
+                iter = croniter(schedule.cron, now)
+            except (TypeError, ValueError):
+                log.error("the schedule %s has an invalid cron", schedule.pk, exc_info=True)
+                schedule.is_active = False
+                schedule.save(update_fields=["is_active"])
+            else:
+                schedule.next_run_at = iter.get_next(datetime)
+                log.info("the schedule %s is scheduled to %s", schedule.pk, schedule.next_run_at)
+                schedule.save(update_fields=["next_run_at"])
+            # it will be called on next iteration if the next_run_at is near to now
+            return
+
+        schedule_execute.send(sender=self, schedule=schedule)
+        task = Task.objects.create(func=schedule.func, args=schedule.args)
+        log.info("the task %s is created for schedule %s", task.pk, schedule.pk)
+
+        now = datetime.now(UTC)
+        schedule.last_run_at = now
+        if schedule.cron:
+            try:
+                iter = croniter(schedule.cron, schedule.next_run_at or now)
+            except (TypeError, ValueError):
+                log.error("the scheduler %s has an invalid cron",
+                          schedule.pk, exc_info=True)
+                schedule.is_active = False
+                schedule.save(update_fields=["is_active", "last_run_at"])
+            else:
+                schedule.next_run_at = iter.get_next(datetime)
+                log.info("the schedule %s is scheduled to %s",
+                         schedule.pk, schedule.next_run_at)
+                schedule.save(update_fields=["next_run_at", "last_run_at"])
+        else:
+            schedule.is_active = False
+            schedule.save(update_fields=["is_active", "last_run_at"])
+
+    @transaction.atomic
+    def _delete_old(self) -> None:
+        with transaction.atomic():
+            moment = datetime.now(UTC) - timedelta(days=3)
+            schedule_qs = Schedule.objects.filter(
+                is_active=False,
+                next_run_at__lt=moment
+            )
+            deleted, _ = schedule_qs.delete()
+            log.info("deleted %d old schedule entries", deleted)
 
 
 class Scheduler:
     def __init__(
         self,
-        session_ctx: sessionmaker[Session],
     ) -> None:
-        self._session_ctx = session_ctx
-        self._entries = dict[int, Entry]()
-        self._reload_entry = Entry(name="<reload>", cron="* * * * * */10")
-        self._calculate_next_ts(self._reload_entry)
+        self._thread: Thread | None = None
+        self._stop_event = Event()
+        self._reload_schedule = Schedule(pk=-1, name="<reload>", cron="* * * * * */10")
+        self._schedules: dict[int, Schedule] = {}
 
-    def add(self, name: str, cron: str | None = None, next_ts: datetime | None = None) -> None:
-        with self._session_ctx() as session:
-            stmt = insert(Entry).values(
-                name=name,
-                cron=cron,
-                next_ts=next_ts,
-                message={}
-            ).returning(Entry)
-            res = session.execute(stmt)
-            e: Entry = res.one().Entry
-            log.info("added: id=%s", e.id)
-            session.commit()
+    def start(self) -> None:
+        self._stop_event.clear()
+        self._thread = Thread(name="scheduler", target=self._run, daemon=True)
+        self._thread.start()
 
-    def delete_all(self) -> None:
-        with self._session_ctx() as session:
-            stmt = delete(Entry)
-            res = session.execute(stmt)
-            log.info("deleted: rowcount=%s", res.rowcount)
-            session.commit()
+    def stop(self) -> None:
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+            self._thread.join(5)
 
-    def _update(self, entry: Entry) -> None:
-        with self._session_ctx() as session:
-            stmt = update(Entry).where(
-                Entry.id == entry.id
-            ).values(
-                is_active=entry.is_active,
-                next_ts=entry.next_ts,
-                last_ts=entry.last_ts,
-            )
-            res = session.execute(stmt)
-            log.info("added: id=%r, rowcount=%s", entry.id, res.rowcount)
-            session.commit()
+    def _run(self) -> None:
+        iter = croniter(self._reload_schedule.cron, datetime.now(UTC))
+        self._reload_schedule.next_run_at = iter.get_next(datetime)
 
-    def _deactivate(self, entry: Entry) -> None:
-        entry.is_active = False
-        with self._session_ctx() as session:
-            stmt = update(Entry).where(
-                Entry.id == entry.id
-            ).values(
-                is_active=False,
-            )
-            res = session.execute(stmt)
-            log.info("added: id=%r, rowcount=%s", entry.id, res.rowcount)
-            session.commit()
-
-    def run(self) -> None:
         self._reload()
 
         while True:
-            entry = self._get_next()
-            if entry.next_ts is None:
-                return
+            schedule = self._get_next_schedule()
+            if schedule.next_run_at is None:
+                raise RuntimeError("code bug: next_run_at is None")
+
+            log.info("next schedule is %s", schedule.id)
 
             now = datetime.now(UTC)
-            if entry.next_ts > now:
-                sleep_seconds: timedelta = entry.next_ts - now
-                log.info("entry: id=%r, sleep_seconds=%s", entry.id, sleep_seconds)
-                time.sleep(sleep_seconds.total_seconds())
+            if schedule.next_run_at > now:
+                sleep_seconds: timedelta = schedule.next_run_at - now
+                log.info("sleep for %s", sleep_seconds)
+                if self._stop_event.wait(sleep_seconds.total_seconds()):
+                    break
 
-            if entry is self._reload_entry:
-                log.info("process reload")
-                # self._reload()
+            if schedule is self._reload_schedule:
+                self._reload()
             else:
-                message = entry.message or {}
-                message["_meta"] = {
-                    "id": entry.id,
-                    "name": entry.name,
-                    "time": entry.next_ts.isoformat()
-                }
-                log.info("process entry: id=%r, name=%r, message=%r", entry.id, entry.name, message)
-
-            if entry.cron:
-                # now = datetime.now(UTC)
-                iter = croniter(entry.cron, entry.next_ts)
-                entry.last_ts = entry.next_ts
-                entry.next_ts = iter.get_next(datetime)
-                if entry is not self._reload_entry:
-                    self._update(entry)
-                log.info("set next_ts entry: id=%r, next_ts=%s", entry.id, entry.next_ts)
-            else:
-                if entry is self._reload_entry:
-                    raise RuntimeError("wtf1")
-                entry.last_ts = entry.next_ts
-                entry.is_active = False
-                self._update(entry)
-                del self._entries[entry.id]
+                self._process_schedule(schedule)
 
     def _reload(self) -> None:
-        log.info("reload")
-        newEntries = self._get_entries()
+        log.info("reload schedules")
+        db_schedules = self._get_schedules()
 
-        newKeys = set(newEntries.keys())
-        keys = set(self._entries.keys())
+        newKeys = set(db_schedules.keys())
+        keys = set(self._schedules.keys())
 
         added = newKeys - keys
         changedOrNot = newKeys & keys
         changed = set[int]()
         deleted = keys - newKeys
 
-        for entry_id in added:
-            self._entries[entry_id] = newEntries[entry_id]
+        for pk in added:
+            self._schedules[pk] = db_schedules[pk]
 
-        for entry_id in changedOrNot:
-            entry = self._entries[entry_id]
-            newEntry = newEntries[entry_id]
-            if self._is_changed(entry, newEntry):
-                self._entries[entry_id] = newEntries[entry_id]
-                changed.add(entry_id)
-            else:
-                entry.name = newEntry.name
-                entry.message = newEntry.message
+        for pk in changedOrNot:
+            schedule = self._schedules[pk]
+            db_schedule = db_schedules[pk]
+            if self._is_changed(schedule, db_schedule):
+                # only fo log
+                changed.add(pk)
+            self._schedules[pk] = db_schedules[pk]
 
-        for entry_id in deleted:
-            del self._entries[entry_id]
+        for pk in deleted:
+            del self._schedules[pk]
 
-        log.info("all: %r, added: %r; changed: %r; deleted=%r",
-                 len(self._entries), added, changed, deleted)
+        log.info("all: active=%d, added: %r; changed: %r; deleted=%r",
+                 len(self._schedules), added, changed, deleted)
 
-    def _get_entries(self) -> dict[int, Entry]:
-        entries = dict[int, Entry]()
-        with self._session_ctx() as session:
-            stmt = select(Entry)
-            res = session.scalars(stmt)
-            for entry in res:
-                session.expunge(entry)
-                log.debug("found entry: id=%r, is_active=%r, cron=%r, next_ts=%r",
-                          entry.id, entry.is_active, entry.cron, entry.next_ts)
-                if entry.is_active and (entry.cron or entry.next_ts):
-                    if entry.cron and not entry.next_ts:
-                        now = datetime.now(UTC)
-                        iter = croniter(entry.cron, now)
-                        entry.next_ts = iter.get_next(datetime)
-                        log.info("set next_ts entry: id=%r, next_ts=%s", entry.id, entry.next_ts)
-                        stmt = update(Entry).where(
-                            Entry.id == entry.id
-                        ).values(
-                            next_ts=entry.next_ts,
-                        )
-                    entries[entry.id] = entry
-            session.commit()
-        log.info("found %d entries", len(entries))
-        return entries
+        iter = croniter(self._reload_schedule.cron,
+                        self._reload_schedule.next_run_at or datetime.now(UTC))
+        self._reload_schedule.next_run_at = iter.get_next(datetime)
 
-    def _is_changed(self, e1: Entry, e2: Entry) -> bool:
-        if e1.cron != e2.cron:
+    @transaction.atomic
+    def _get_schedules(self) -> dict[int, Schedule]:
+        schedules = dict[int, Schedule]()
+        schedule_qs = Schedule.objects.filter(is_active=True)
+        for schedule in schedule_qs.select_for_update():
+            log.debug("loaded schedule %s", schedule.pk)
+
+            if not schedule.next_run_at and not schedule.cron:
+                log.info("the schedule %s is an invalid", schedule.pk)
+                schedule.is_active = False
+                schedule.save(update_fields=["is_active"])
+                continue
+
+            if not schedule.next_run_at:
+                try:
+                    iter = croniter(schedule.cron, datetime.now(UTC))
+                except (TypeError, ValueError):
+                    log.error("the scheduler %s has an invalid cron", schedule.pk, exc_info=True)
+                    schedule.is_active = False
+                    schedule.save(update_fields=["is_active"])
+                    continue
+                schedule.next_run_at = iter.get_next(datetime)
+                log.info("the schedule %s is scheduled to %s", schedule.pk, schedule.next_run_at)
+                schedule.save(update_fields=["next_run_at"])
+
+            schedules[schedule.pk] = schedule
+
+        log.info("found %d entries", len(schedules))
+        return schedules
+
+    def _is_changed(self, s1: Schedule, s2: Schedule) -> bool:
+        if s1.cron != s2.cron:
             return True
-        if e1.next_ts != e2.next_ts:
+        if s1.next_run_at != s2.next_run_at:
             return True
         return False
 
-    def _get_next(self) -> Entry:
+    def _get_next_schedule(self) -> Schedule:
         # entry: Entry | None = None
-        entry = self._reload_entry
-        for e in self._entries.values():
-            if e.next_ts and entry.next_ts and e.next_ts < entry.next_ts:
-                entry = e
-        return entry
+        schedule = self._reload_schedule
+        for s in self._schedules.values():
+            if s.next_run_at < schedule.next_run_at:
+                schedule = s
+        return schedule
 
-    def _calculate_next_ts(self, entry: Entry) -> None:
-        if entry.cron:
-            base = entry.next_ts or datetime.now(UTC)
-            iter = croniter(entry.cron, base)
-            entry.next_ts = iter.get_next(datetime)
-            log.info("set next_ts entry: id=%r, next_ts=%s", entry.id, entry.next_ts)
+    @transaction.atomic
+    def _process_schedule(self, schedule: Schedule) -> None:
+        log.info("process %s schedule", schedule.pk)
+
+        schedule_qs = Schedule.objects.filter(is_active=True, pk=schedule.pk)
+        db_schedule = schedule_qs.select_for_update().first()
+        if db_schedule is None:
+            log.error("the schedule %s was deleted or it is inactive", schedule.pk)
+            del self._schedules[schedule.pk]
+            return
+
+        self._schedules[db_schedule.pk] = db_schedule
+
+        if not db_schedule.next_run_at and not db_schedule.cron:
+            log.info("the schedule %s is an invalid", db_schedule.pk)
+            db_schedule.is_active = False
+            db_schedule.save(update_fields=["is_active"])
+            del self._schedules[db_schedule.pk]
+            return
+
+        if not db_schedule.next_run_at:
+            try:
+                iter = croniter(db_schedule.cron, db_schedule.next_run_at or datetime.now(UTC))
+            except (TypeError, ValueError):
+                log.error("the schedule %s has an invalid cron",
+                          db_schedule.pk, exc_info=True)
+                db_schedule.is_active = False
+                db_schedule.save(update_fields=["is_active"])
+                del self._schedules[db_schedule.pk]
+            else:
+                db_schedule.next_run_at = iter.get_next(datetime)
+                log.info("the schedule %s is scheduled for %s",
+                         db_schedule.pk, db_schedule.next_run_at)
+                db_schedule.save(update_fields=["next_run_at"])
+            return
+
+        if schedule.next_run_at != db_schedule.next_run_at:
+            return
+
+        # call
+        schedule_execute.send(sender=self, schedule=db_schedule)
+        task = Task.objects.create(func=db_schedule.func, args=db_schedule.args)
+        log.info("the task %s is created for schedule %s", task.pk, db_schedule.pk)
+
+        if db_schedule.cron:
+            try:
+                iter = croniter(db_schedule.cron, db_schedule.next_run_at or datetime.now(UTC))
+            except (TypeError, ValueError):
+                log.error("the schedule %s has an invalid cron",
+                          db_schedule.pk, exc_info=True)
+                db_schedule.is_active = False
+                db_schedule.save(update_fields=["is_active"])
+                del self._schedules[db_schedule.pk]
+            else:
+                db_schedule.next_run_at = iter.get_next(datetime)
+                log.info("the schedule %s is scheduled for %s",
+                         db_schedule.pk, db_schedule.next_run_at)
+                db_schedule.save(update_fields=["next_run_at"])
+        else:
+            db_schedule.is_active = False
+            db_schedule.last_run_at = datetime.now(UTC)
+            db_schedule.save(update_fields=["is_active", "last_run_at"])
+            del self._schedules[db_schedule.pk]
+
+    @transaction.atomic
+    def _delete_old(self) -> None:
+        moment = datetime.now(UTC) - timedelta(days=3)
+        schedule_qs = Schedule.objects.filter(
+            is_active=False,
+            next_run_at__lt=moment
+        )
+        deleted, _ = schedule_qs.delete()
+        log.info("deleted %d old schedule entries", deleted)

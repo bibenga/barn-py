@@ -5,8 +5,7 @@ from threading import Event
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
-from barn2.lock.elector import LeaderElector
-
+from ...elector import LeaderElector
 from ...scheduler import Scheduler, SimpleScheduler
 from ...signals import leader_changed
 from ...worker import Worker

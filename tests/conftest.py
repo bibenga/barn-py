@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from barn.models import metadata
+from barn_old.models import metadata
 
 
 @pytest.fixture(scope="session")

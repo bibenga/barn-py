@@ -4,9 +4,9 @@ import logging.config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from barn.lock import LockManager
-from barn.models import Base, metadata
-from barn.scheduler import Scheduler
+from barn_old.lock import LockManager
+from barn_old.models import Base, metadata
+from barn_old.scheduler import Scheduler
 
 logging.basicConfig(
     # format="{asctime} {levelname} [{name}] {message}",

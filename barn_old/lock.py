@@ -8,7 +8,7 @@ from sqlalchemy import select, update, insert, Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from barn.models import Lock, lock_table
+from barn_old.models import Lock, lock_table
 
 log = logging.getLogger(__name__)
 
