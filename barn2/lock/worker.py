@@ -12,11 +12,12 @@ from .models import Task
 log = logging.getLogger(__name__)
 
 
-class Broker:
+class Worker:
     def __init__(
         self,
         use_signals: bool = True,
-        interval: float | int = 5
+        interval: float | int = 5,
+        func_filter: str | None = None
     ) -> None:
         self._use_signals = use_signals
         self._interval = interval
@@ -100,7 +101,7 @@ class Broker:
             task.is_processed = True
             task.finished_at = datetime.now(UTC)
             task.save(update_fields=["is_processed", "started_at",
-                        "finished_at", "is_success", "result", "error"])
+                                     "finished_at", "is_success", "result", "error"])
 
             log.info("the task %s is processed in %s", task.pk,
-                        task.finished_at - task.started_at)
+                     task.finished_at - task.started_at)

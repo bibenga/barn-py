@@ -75,6 +75,6 @@ def async_task(
 
 def eager_run(task: Task) -> None:
     log.info("run the task %s in eager mode", task)
-    from .broker import Broker
-    broker = Broker(use_signals=False)
-    broker.call_task_eager(task)
+    from .worker import Worker
+    worker = Worker(use_signals=False)
+    worker.call_task_eager(task)

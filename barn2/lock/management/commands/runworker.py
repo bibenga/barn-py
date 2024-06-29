@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
-from ...broker import Broker
+from ...worker import Worker
 
 
 class Command(BaseCommand):
@@ -27,8 +27,8 @@ class Command(BaseCommand):
             self._run(**options)
 
     def _run(self, **options):
-        broker = Broker(
+        worker = Worker(
             use_signals=not options["use_reloader"],
             interval=options["interval"]
         )
-        broker.run()
+        worker.run()
