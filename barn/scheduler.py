@@ -1,6 +1,7 @@
 import logging
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
+from random import random
 
 from croniter import croniter
 from django.db import transaction
@@ -16,9 +17,8 @@ log = logging.getLogger(__name__)
 class SimpleScheduler:
     def __init__(
         self,
-        interval: float | int = 5,
     ) -> None:
-        self._interval = interval
+        self._cron = "* * * * * */5"
         self._thread: Thread | None = None
         self._stop_event = Event()
 
@@ -35,9 +35,17 @@ class SimpleScheduler:
     def _run(self) -> None:
         log.info("stated")
         try:
-            self._process()
-            while not self._stop_event.wait(self._interval):
-                self._process()
+            # self._process()
+            while not self._stop_event.is_set():
+                now = datetime.now(UTC)
+                iter = croniter(self._cron, now)
+                next_run_at = iter.get_next(datetime)
+                sleep_seconds = next_run_at - now
+                sleep_seconds += timedelta(seconds=random() / 5)
+                log.info("sleep for %s", sleep_seconds)
+                if self._stop_event.wait(sleep_seconds.total_seconds()):
+                    break
+                # self._process()
         finally:
             log.info("finished")
 
@@ -139,7 +147,7 @@ class Scheduler:
 
         self._reload()
 
-        while True:
+        while not self._stop_event.is_set():
             schedule = self._get_next_schedule()
             if schedule.next_run_at is None:
                 raise RuntimeError("code bug: next_run_at is None")

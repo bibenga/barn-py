@@ -1,7 +1,10 @@
+import signal
+from threading import Event
+
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
-from ...scheduler import SimpleScheduler, Scheduler
+from ...scheduler import Scheduler, SimpleScheduler
 
 
 class Command(BaseCommand):
@@ -13,11 +16,6 @@ class Command(BaseCommand):
             action="store_true",
             dest="use_reloader",
         )
-        parser.add_argument(
-            "--interval",
-            type=int,
-            default=5,
-        )
 
     def handle(self, *args, **options):
         use_reloader = options["use_reloader"]
@@ -27,12 +25,21 @@ class Command(BaseCommand):
             self._run(**options)
 
     def _run(self, **options):
-        # scheduler = SimpleScheduler(
-        #     use_signals=not options["use_reloader"],
-        #     interval=options["interval"]
-        # )
-        scheduler = Scheduler(
-            use_signals=not options["use_reloader"],
-            interval=options["interval"]
-        )
-        scheduler.run()
+        use_signals = not options["use_reloader"]
+
+        self._stop_event = Event()
+        if use_signals:
+            signal.signal(signal.SIGTERM, self._sig_handler)
+            signal.signal(signal.SIGINT, self._sig_handler)
+
+        scheduler = SimpleScheduler()
+        scheduler.start()
+
+        while not self._stop_event.wait(5):
+            pass
+
+        scheduler.stop()
+
+    def _sig_handler(self, signum, frame) -> None:
+        # log.info("got signal - %s", signal.strsignal(signum))
+        self._stop_event.set()

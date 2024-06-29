@@ -74,7 +74,11 @@ class Worker:
                 created__lt=moment
             )
             deleted, _ = task_qs.delete()
-            log.info("deleted %d old tasks", deleted)
+            log.log(
+                logging.DEBUG if deleted == 0 else logging.INFO,
+                "deleted %d old tasks older than %s",
+                deleted, moment
+            )
 
     def call_task_eager(self, task: Task) -> None:
         self._call_task(task)
