@@ -1,7 +1,7 @@
-from sqlalchemy.orm import Session
+import pytest
 
 
+@pytest.mark.django_db(transaction=True)
 class TestLock:
-
-    def test_1(self, session: Session) -> None:
-        assert 1 == 1
+    def test_loc(self):
+        pass

@@ -1,6 +1,8 @@
 django
 croniter
+
 pytest
+pytest-django
 
 setproctitle
 psycopg[binary]
