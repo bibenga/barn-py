@@ -1,5 +1,7 @@
 import logging
 from datetime import UTC, datetime, timedelta
+import os
+import socket
 from threading import Event, Thread
 from uuid import uuid4
 
@@ -14,7 +16,7 @@ log = logging.getLogger(__name__)
 class LeaderElector:
     def __init__(
         self,
-        lock_name: str,
+        lock_name: str = "barn",
         interval: float | int = 5,
         expiration: int | timedelta = 30,
         hostname: str = '',
@@ -23,6 +25,11 @@ class LeaderElector:
         self._interval = interval
         self._expiration = expiration if isinstance(expiration, timedelta) \
             else timedelta(seconds=expiration)
+
+        if not hostname:
+            hostname = socket.gethostname()
+            if hostname:
+                hostname = f"{hostname}-{os.getpid()}"
         self._hostname = hostname or str(uuid4())
         self._is_locked = False
         self._locked_at: datetime | None = None
@@ -121,20 +128,20 @@ class LeaderElector:
     def _release(self) -> None:
         log.debug("release the lock %r", self._lock_name)
         lock = Lock.objects.select_for_update().filter(name=self._lock_name).first()
-        self._is_locked = False
-        self._locked_at = None
         if lock is None:
             log.warning("the lock was deleted by someone")
         else:
             log.info("the lock state is: locked_at=%s, owner=%s", lock.locked_at, lock.owner)
             if lock.locked_at == self._locked_at and lock.owner == self._hostname:
-                lock.locked_at = self._locked_at
+                lock.locked_at = None
                 lock.owner = None
                 lock.save()
                 log.info("the lock %r is released", self._lock_name)
             else:
                 log.warning("the lock %r cannot be released because it owned by someone (it was acquired at %s by %r)",
                             self._lock_name, lock.locked_at, lock.owner)
+        self._is_locked = False
+        self._locked_at = None
 
     def _on_acquired(self) -> None:
         leader_changed.send(sender=self, lock=self._lock_name, is_leader=True)

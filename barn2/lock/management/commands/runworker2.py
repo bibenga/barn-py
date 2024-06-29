@@ -1,13 +1,15 @@
 import logging
 import signal
 from threading import Event
+
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
 from barn2.lock.elector import LeaderElector
 
+from ...scheduler import Scheduler, SimpleScheduler
+from ...signals import leader_changed
 from ...worker import Worker
-from ...scheduler import SimpleScheduler, Scheduler
 
 log = logging.getLogger(__name__)
 
@@ -66,44 +68,50 @@ class Command(BaseCommand):
             log.warning("nothing to run")
             return
 
-        self._stop_event = Event()
         log.info("start")
-
+        self._stop_event = Event()
         if use_signals:
             signal.signal(signal.SIGTERM, self._sig_handler)
             signal.signal(signal.SIGINT, self._sig_handler)
 
-        scheduler: SimpleScheduler | Scheduler | None = None
+        self._scheduler: SimpleScheduler | Scheduler | None = None
         if scheduler_type == "simple":
-            scheduler = SimpleScheduler()
-            scheduler.start()
+            self._scheduler = SimpleScheduler()
+            self._scheduler.start()
         elif scheduler_type == "complex":
-            scheduler = Scheduler()
+            self._scheduler = Scheduler()
 
-        worker: Worker | None = None
+        self._worker: Worker | None = None
         if worker_type == "simple":
-            worker = Worker(task_filter=task_filter)
-            worker.start()
+            self._worker = Worker(task_filter=task_filter)
+            self._worker.start()
 
-        elector: LeaderElector | None = None
+        self._elector: LeaderElector | None = None
         if scheduler_type == "complex":
-            elector = LeaderElector()
-            elector.start()
+            self._elector = LeaderElector()
+            self._elector.start()
+            leader_changed.connect(self._leader_changed)
 
         while not self._stop_event.wait(5):
             log.debug("I am alive")
 
-        if elector:
-            elector.stop()
+        if self._elector:
+            self._elector.stop()
 
-        if worker:
-            worker.stop()
+        if self._worker:
+            self._worker.stop()
 
-        if scheduler:
-            scheduler.stop()
+        if self._scheduler:
+            self._scheduler.stop()
 
         log.info("stop")
 
     def _sig_handler(self, signum, frame) -> None:
         log.info("got signal - %s", signal.strsignal(signum))
         self._stop_event.set()
+
+    def _leader_changed(self, is_leader: bool, **_kwargs) -> None:
+        if is_leader:
+            self._scheduler.start()
+        else:
+            self._scheduler.stop()
