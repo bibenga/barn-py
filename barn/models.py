@@ -11,12 +11,6 @@ class Base(DeclarativeBase):
     pass
 
 
-# CREATE TABLE barn_lock (
-#         id VARCHAR NOT NULL,
-#         locked_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP) NOT NULL,
-#         locked_by VARCHAR NOT NULL,
-#         PRIMARY KEY (id)
-# )
 class Lock(Base):
     @declared_attr
     def __tablename__(cls):
