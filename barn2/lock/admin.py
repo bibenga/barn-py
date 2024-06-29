@@ -3,7 +3,7 @@ import json
 from django.contrib import admin
 from django.utils.safestring import mark_safe
 
-from .models import Lock, Task, Schedule, Queue
+from .models import Lock, Task, Schedule
 
 
 @admin.register(Lock)
@@ -49,20 +49,6 @@ class TaskAdmin(admin.ModelAdmin):
         return pretty_json_field(instance.result)
 
     result_pretty.short_description = "result"
-
-
-@admin.register(Queue)
-class QueueAdmin(admin.ModelAdmin):
-    list_display = ("id", "created")
-    ordering = ("created",)
-    date_hierarchy = "created"
-    readonly_fields = ["payload_pretty"]
-
-    def payload_pretty(self, instance):
-        """Function to display pretty version of our data"""
-        return pretty_json_field(instance.payload)
-
-    payload_pretty.short_description = "result"
 
 
 try:

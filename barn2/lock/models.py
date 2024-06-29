@@ -36,14 +36,3 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.func}"
-
-
-class Queue(models.Model):
-    created = models.DateTimeField(auto_now=True)
-    payload = models.JSONField(null=True)
-
-    def __str__(self):
-        return f"message:{self.id}"
-
-    # class Meta:
-    #     abstract = True
