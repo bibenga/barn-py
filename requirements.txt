@@ -1,6 +1,6 @@
+django
 croniter
-
-sqlalchemy
-
-psycopg[binary, pool]
 pytest
+
+setproctitle
+psycopg[binary]
