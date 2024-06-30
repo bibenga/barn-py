@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from threading import Event, Thread
 from typing import Type
 
@@ -39,7 +39,7 @@ class Scheduler:
         try:
             self._process()
             while not self._stop_event.is_set():
-                now = datetime.now(UTC)
+                now = timezone.now()
                 iter = croniter(self._cron, now)
                 next_run_at = iter.get_next(datetime)
                 sleep_seconds = next_run_at - now
@@ -75,7 +75,7 @@ class Scheduler:
             schedule.save(update_fields=["is_active"])
             return
 
-        now = datetime.now(UTC)
+        now = timezone.now()
         if not schedule.next_run_at:
             try:
                 iter = croniter(schedule.cron, now)
@@ -93,7 +93,7 @@ class Scheduler:
         schedule_execute.send(sender=self, schedule=schedule)
         schedule.process()
 
-        now = datetime.now(UTC)
+        now = timezone.now()
         schedule.last_run_at = now
         if schedule.cron:
             try:
@@ -116,7 +116,7 @@ class Scheduler:
     @transaction.atomic
     def _delete_old(self) -> None:
         with transaction.atomic():
-            moment = datetime.now(UTC) - timedelta(days=3)
+            moment = timezone.now() - timedelta(days=3)
             schedule_qs = self._model.objects.filter(
                 is_active=False,
                 next_run_at__lt=moment

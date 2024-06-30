@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-
 from django.db import models
 
 from barn.models import AbstractSchedule, AbstractTask

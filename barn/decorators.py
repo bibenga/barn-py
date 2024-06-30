@@ -39,7 +39,7 @@ def async_task(
     kwargs: dict | None = None,
     countdown: timedelta | int | float | None = None,
     eta: datetime | None = None,
-) -> None:
+) -> Task | Schedule:
     func = f"{func.__module__}.{func.__name__}"
     log.info("async_task: %s", func)
 
@@ -62,19 +62,20 @@ def async_task(
         log.info("the schedule %s is created at %s", schedule.pk, next_run_at)
         if getattr(settings, "BARN_TASK_EAGER", False):
             raise ValueError("A task cannot be executed in eager mode")
+        return schedule
     else:
         task = Task.objects.create(
             func=func,
             args=kwargs,
         )
         log.info("the task %s is queued", task.pk)
-
         if getattr(settings, "BARN_TASK_EAGER", False):
             transaction.on_commit(eager_run, task)
+        return task
 
 
 def eager_run(task: Task) -> None:
     log.info("run the task %s in eager mode", task)
     from .worker import Worker
-    worker = Worker(use_signals=False)
+    worker = Worker()
     worker.call_task_eager(task)

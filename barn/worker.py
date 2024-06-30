@@ -1,11 +1,12 @@
 import logging
 import traceback
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from threading import Event, Thread
 from typing import Type
 
 from croniter import croniter
 from django.db import transaction
+from django.utils import timezone
 
 from .models import AbstractTask, Task
 
@@ -38,7 +39,7 @@ class Worker:
             self._process()
             self._delete_old()
             while not self._stop_event.is_set():
-                now = datetime.now(UTC)
+                now = timezone.now()
                 iter = croniter(self._cron, now)
                 next_run_at = iter.get_next(datetime)
                 sleep_seconds = next_run_at - now
@@ -67,7 +68,7 @@ class Worker:
 
     def _delete_old(self) -> None:
         with transaction.atomic():
-            moment = datetime.now(UTC) - timedelta(days=3)
+            moment = timezone.now() - timedelta(days=3)
             task_qs = self._model.objects.filter(
                 is_processed=True,
                 created__lt=moment
@@ -85,7 +86,7 @@ class Worker:
 
     def _call_task(self, task: AbstractTask) -> None:
         log.info("process the task %s task", task)
-        task.started_at = datetime.now(UTC)
+        task.started_at = timezone.now()
         try:
             with transaction.atomic():
                 task.process()
@@ -100,7 +101,7 @@ class Worker:
             # post_execute.send(sender=self, task=task, success=True, result=result, exc=None)
         finally:
             task.is_processed = True
-            task.finished_at = datetime.now(UTC)
+            task.finished_at = timezone.now()
             # task.save(update_fields=["is_processed", "started_at",
             #                          "finished_at", "is_success", "result", "error"])
             task.save()
