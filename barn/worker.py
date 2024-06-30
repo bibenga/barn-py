@@ -12,13 +12,14 @@ from .models import AbstractTask, Task
 
 log = logging.getLogger(__name__)
 
-
 class Worker:
     def __init__(
         self,
         model: Type[AbstractTask] | None,
+        with_deletion: bool = False,
     ) -> None:
         self._model = model or Task
+        self._with_deletion = with_deletion
         self._cron = "* * * * * */5"
         self._thread: Thread | None = None
         self._stop_event = Event()
@@ -37,7 +38,8 @@ class Worker:
         log.info("stated")
         try:
             self._process()
-            self._delete_old()
+            if self._with_deletion:
+                self._delete_old()
             while not self._stop_event.is_set():
                 now = timezone.now()
                 iter = croniter(self._cron, now)
@@ -50,7 +52,8 @@ class Worker:
                 if self._stop_event.wait(sleep_seconds.total_seconds()):
                     break
                 self._process()
-                self._delete_old()
+                if self._with_deletion:
+                    self._delete_old()
         finally:
             log.info("finished")
 
@@ -66,19 +69,19 @@ class Worker:
 
                 self._call_task(task)
 
+    @transaction.atomic
     def _delete_old(self) -> None:
-        with transaction.atomic():
-            moment = timezone.now() - timedelta(days=3)
-            task_qs = self._model.objects.filter(
-                is_processed=True,
-                created__lt=moment
-            )
-            deleted, _ = task_qs.delete()
-            log.log(
-                logging.DEBUG if deleted == 0 else logging.INFO,
-                "deleted %d old tasks older than %s",
-                deleted, moment
-            )
+        moment = timezone.now() - timedelta(days=3)
+        task_qs = self._model.objects.filter(
+            is_processed=True,
+            created__lt=moment
+        )
+        deleted, _ = task_qs.delete()
+        log.log(
+            logging.DEBUG if deleted == 0 else logging.INFO,
+            "deleted %d old tasks older than %s",
+            deleted, moment
+        )
 
     @transaction.atomic
     def call_task_eager(self, task: AbstractTask) -> None:

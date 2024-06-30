@@ -18,8 +18,10 @@ class Scheduler:
     def __init__(
         self,
         model: Type[AbstractSchedule] | None,
+        with_deletion: bool = False,
     ) -> None:
         self._model = model or Schedule
+        self._with_deletion = with_deletion
         self._cron = "* * * * * */5"
         self._thread: Thread | None = None
         self._stop_event = Event()
@@ -38,6 +40,8 @@ class Scheduler:
         log.info("stated")
         try:
             self._process()
+            if self._with_deletion:
+                self._delete_old()
             while not self._stop_event.is_set():
                 now = timezone.now()
                 iter = croniter(self._cron, now)
@@ -49,6 +53,8 @@ class Scheduler:
                 if self._stop_event.wait(sleep_seconds.total_seconds()):
                     break
                 self._process()
+                if self._with_deletion:
+                    self._delete_old()
         finally:
             log.info("finished")
 
@@ -115,11 +121,10 @@ class Scheduler:
 
     @transaction.atomic
     def _delete_old(self) -> None:
-        with transaction.atomic():
-            moment = timezone.now() - timedelta(days=3)
-            schedule_qs = self._model.objects.filter(
-                is_active=False,
-                next_run_at__lt=moment
-            )
-            deleted, _ = schedule_qs.delete()
-            log.info("deleted %d old schedule entries", deleted)
+        moment = timezone.now() - timedelta(days=3)
+        schedule_qs = self._model.objects.filter(
+            is_active=False,
+            next_run_at__lt=moment
+        )
+        deleted, _ = schedule_qs.delete()
+        log.info("deleted %d old schedule entries", deleted)
