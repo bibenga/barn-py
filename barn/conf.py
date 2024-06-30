@@ -2,13 +2,18 @@ from django.conf import settings
 from django.utils.functional import classproperty
 
 
-class Conf:
+class MetaConf(type):
+    def USE_JITTER(cls) -> bool:
+        return getattr(settings, "BARN_WITH_JITTER", False)
+
+
+class Conf(object, metaclass=MetaConf):
     # SCHEDULER_CRON = getattr(settings, "BARN_SCHEDULER_CRON", 5)  # seconds
     # TASK_TTL = getattr(settings, "BARN_TASK_TTL", 30)  # days
 
-    @classproperty
-    def USE_JITTER(cls) -> bool:
-        return getattr(settings, "BARN_WITH_JITTER", False)
+    # @classproperty
+    # def USE_JITTER(cls) -> bool:
+    #     return getattr(settings, "BARN_WITH_JITTER", False)
 
     @classproperty
     def TASK_EAGER(cls) -> bool:
@@ -29,3 +34,5 @@ class Conf:
     @classproperty
     def WORKER_DELETE_OLD(cls) -> bool:
         return getattr(settings, "BARN_WORKER_DELETE_OLD", True)
+
+Conf.TASK_EAGER

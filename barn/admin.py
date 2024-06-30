@@ -8,7 +8,7 @@ from .models import Lock, Schedule, Task
 
 @admin.register(Lock)
 class LockAdmin(admin.ModelAdmin):
-    list_display = ("name", "locked_at", "owner")
+    list_display = ("name", "locked_at", "owner", "is_locked")
     ordering = ("name",)
     search_fields = ("name",)
 
