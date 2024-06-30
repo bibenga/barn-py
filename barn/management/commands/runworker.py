@@ -15,6 +15,8 @@ log = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = "Worker"
+    scheduler_model = "barn.schedule"
+    task_model = "barn.task"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -34,7 +36,7 @@ class Command(BaseCommand):
             "-sm",
             "--scheduler-model",
             dest="scheduler_model",
-            default="barn.schedule",
+            default=self.scheduler_model,
         )
 
         parser.add_argument(
@@ -48,7 +50,7 @@ class Command(BaseCommand):
             "-tm",
             "--task-model",
             dest="task_model",
-            default="barn.task",
+            default=self.task_model,
         )
 
         parser.add_argument(
