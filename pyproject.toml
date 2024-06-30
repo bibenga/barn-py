@@ -2,9 +2,9 @@
 name = "barn"
 version = "0.0.1"
 authors = [
-  { name="Sapce Void", email="null@example.com" },
+  { name="Space Void", email="234253453453@43234234234234.com" },
 ]
-description = "ightweight scheduler and worker for Django using a database backend"
+description = "Lightweight scheduler and worker for Django using a database backend"
 license = {text = "MIT"}
 readme = "README.md"
 keywords = ["django", "distributed", "multiprocessing", "queue", "scheduler"]
