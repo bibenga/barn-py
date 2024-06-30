@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     "barn",
+    "stall",
 ]
 
 MIDDLEWARE = [
@@ -105,9 +106,10 @@ DATABASES = {
         "CONN_HEALTH_CHECKS": True,
         "TIME_ZONE": "UTC",
         "OPTIONS": {
-            "timeout": 60,
+            "timeout": 600,
             # django 5.1
             # "init_command": "PRAGMA journal_mode = WAL; PRAGMA cache = shared; PRAGMA mode = rwc;"
+            # "transaction_mode": "IMMEDIATE",
         }
     }
     # "default": {

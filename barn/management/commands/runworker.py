@@ -1,13 +1,13 @@
 import logging
 import signal
+import time
 from threading import Event
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
-from ...elector import LeaderElector
-from ...scheduler import Scheduler, SimpleScheduler
-from ...signals import leader_changed
+from ...scheduler import Scheduler
 from ...worker import Worker
 
 log = logging.getLogger(__name__)
@@ -27,30 +27,40 @@ class Command(BaseCommand):
             "-s",
             "--scheduler",
             dest="scheduler",
-            type=str,
-            default="simple",
-            choices=["none", "simple", "complex"]
+            action="store_true",
+        )
+
+        parser.add_argument(
+            "-sm",
+            "--scheduler-model",
+            dest="scheduler_model",
+            default="barn.schedule",
         )
 
         parser.add_argument(
             "-w",
             "--worker",
             dest="worker",
-            type=str,
-            default="simple",
-            choices=["none", "simple"]
+            action="store_true",
         )
 
         parser.add_argument(
-            "-f",
-            "--filter",
-            dest="filter",
-            nargs="*",
-            type=str,
+            "-tm",
+            "--task-model",
+            dest="task_model",
+            default="barn.task",
+        )
+
+        parser.add_argument(
+            "-d",
+            "--delete",
+            dest="delete",
+            action="store_true",
         )
 
     def handle(self, *args, **options):
         # log.info("handle: %r", options)
+        # return
         use_reloader = options["use_reloader"]
         if use_reloader:
             autoreload.run_with_reloader(self._run, **options)
@@ -59,11 +69,21 @@ class Command(BaseCommand):
 
     def _run(self, **options):
         use_signals = not options["use_reloader"]
-        scheduler_type = options["scheduler"]
-        worker_type = options["worker"]
-        task_filter = options["filter"]
+        with_scheduler = options["scheduler"]
+        with_worker = options["worker"]
+        scheduler_model = options["scheduler_model"]
+        task_model = options["task_model"]
 
-        if scheduler_type == "none" and worker_type == "none":
+        scheduler_app,_, scheduler_model = scheduler_model.partition('.')
+        scheduler_model = ContentType.objects.get_by_natural_key(scheduler_app, scheduler_model).model_class()
+
+        task_app,_, task_model = task_model.partition('.')
+        task_model = ContentType.objects.get_by_natural_key(task_app, task_model).model_class()
+
+        log.info("run with params: scheduler=%s, scheduler_model=%s, worker=%s, task_model=%s",
+                 with_scheduler, scheduler_model, with_worker, task_model)
+
+        if not with_scheduler and not with_worker:
             log.warning("nothing to run")
             return
 
@@ -73,29 +93,20 @@ class Command(BaseCommand):
             signal.signal(signal.SIGTERM, self._sig_handler)
             signal.signal(signal.SIGINT, self._sig_handler)
 
-        self._scheduler: SimpleScheduler | Scheduler | None = None
-        if scheduler_type == "simple":
-            self._scheduler = SimpleScheduler()
+        self._scheduler: Scheduler | None = None
+        if with_scheduler:
+            self._scheduler = Scheduler(scheduler_model)
             self._scheduler.start()
-        elif scheduler_type == "complex":
-            self._scheduler = Scheduler()
+            time.sleep(1)
 
         self._worker: Worker | None = None
-        if worker_type == "simple":
-            self._worker = Worker(task_filter=task_filter)
+        if with_worker:
+            self._worker = Worker(task_model)
             self._worker.start()
-
-        self._elector: LeaderElector | None = None
-        if scheduler_type == "complex":
-            self._elector = LeaderElector()
-            self._elector.start()
-            leader_changed.connect(self._leader_changed)
+            time.sleep(1)
 
         while not self._stop_event.wait(5):
             log.debug("I am alive")
-
-        if self._elector:
-            self._elector.stop()
 
         if self._worker:
             self._worker.stop()
@@ -108,9 +119,3 @@ class Command(BaseCommand):
     def _sig_handler(self, signum, frame) -> None:
         log.info("got signal - %s", signal.strsignal(signum))
         self._stop_event.set()
-
-    def _leader_changed(self, is_leader: bool, **_kwargs) -> None:
-        if is_leader:
-            self._scheduler.start()
-        else:
-            self._scheduler.stop()
