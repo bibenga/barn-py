@@ -66,11 +66,11 @@ class Scheduler:
                     is_active=True,
                 ).order_by("next_run_at", "id")
                 schedule = schedule_qs.select_for_update(skip_locked=True).first()
-                if not schedule:
+                if schedule:
+                    self._process_schedule(schedule)
+                else:
                     log.info("no pending schedule is found")
                     break
-
-                self._process_schedule(schedule)
 
     def _process_schedule(self, schedule: AbstractSchedule) -> None:
         log.info("found a schedule %s", schedule.pk)

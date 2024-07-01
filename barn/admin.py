@@ -41,9 +41,9 @@ class TaskAdmin(AbstractTaskAdmin):
     list_display = ("id", "func", "created", "is_processed", "is_success")
     search_fields = ("func",)
     date_hierarchy = "created"
-    fields = ("name", "func", "args", "args_pretty", "created", "is_processed",
+    fields = ("func", "args", "args_pretty", "created", "is_processed",
               "started_at", "finished_at", "is_success", "result", "result_pretty", "error")
-    readonly_fields = ("args_pretty", "result_pretty")
+    readonly_fields = ("created", "args_pretty", "result_pretty")
 
     def args_pretty(self, instance):
         """Function to display pretty version of our data"""

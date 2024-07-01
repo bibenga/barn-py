@@ -20,7 +20,7 @@ def validate_cron(value):
 
 class AbstractSchedule(models.Model):
     is_active = models.BooleanField(default=True)
-    cron = models.TextField(null=True, blank=True, validators=[validate_cron],
+    cron = models.CharField(max_length=200, null=True, blank=True, validators=[validate_cron],
                             help_text="Exactly 5 or 6 columns has to be specified for iterator expression")
     next_run_at = models.DateTimeField(null=True, blank=True, db_index=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
@@ -59,8 +59,8 @@ class AbstractTask(models.Model):
 
 
 class Schedule(AbstractSchedule):
-    name = models.TextField(null=True, blank=True)
-    func = models.TextField()
+    name = models.CharField(max_length=100, null=True, blank=True)
+    func = models.CharField(max_length=1000)
     args = models.JSONField(null=True, blank=True)
 
     def __str__(self) -> str:
@@ -75,7 +75,7 @@ class Schedule(AbstractSchedule):
 
 
 class Task(AbstractTask):
-    func = models.TextField()
+    func = models.CharField(max_length=1000)
     args = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
 
