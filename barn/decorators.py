@@ -41,8 +41,6 @@ def async_task(
     eta: datetime | None = None,
 ) -> Task | Schedule:
     func = f"{func.__module__}.{func.__name__}"
-    log.info("async_task: %s", func)
-
     run_at = None
     if countdown:
         if isinstance(countdown, timedelta):
@@ -55,9 +53,9 @@ def async_task(
     if run_at:
         if Conf.TASK_SYNC:
             raise RuntimeError("A task cannot be executed in eager mode")
-        schedule = Task.objects.create(func=func, args=kwargs, run_at=run_at)
+        task = Task.objects.create(func=func, args=kwargs, run_at=run_at)
         log.info("the task %s is queued", task.pk)
-        return schedule
+        return task
     else:
         task = Task.objects.create(func=func, args=kwargs)
         log.info("the task %s is queued", task.pk)
@@ -69,5 +67,5 @@ def async_task(
 def _sync_call(task: Task) -> None:
     log.info("run the task %s in sync mode", task)
     from .worker import Worker
-    worker = Worker(Task, with_deletion=False)
-    worker.call_task(task)
+    worker = Worker(Task)
+    worker.sync_call_task(task)

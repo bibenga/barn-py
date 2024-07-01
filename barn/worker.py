@@ -88,7 +88,10 @@ class Worker:
         )
 
     @transaction.atomic
-    def call_task(self, task: AbstractTask) -> None:
+    def sync_call_task(self, task: AbstractTask) -> None:
+        task = self._model.select_for_update(skip_locked=True).get(pk=task.pk)
+        if task.is_processed:
+            raise ValueError("The task already processed. Is worker running?")
         self._call_task(task)
 
     def _call_task(self, task: AbstractTask) -> None:
