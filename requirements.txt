@@ -1,6 +1,8 @@
 django
 croniter
 
+# pygments
+
 # setproctitle
 
 pytest

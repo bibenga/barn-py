@@ -6,6 +6,21 @@ from django.utils.safestring import mark_safe
 
 from .models import Schedule, Task
 
+try:
+    from pygments import highlight
+    from pygments.formatters import HtmlFormatter
+    from pygments.lexers import JsonLexer
+
+    def pretty_json_field(payload):
+        """Function to display pretty version of our data"""
+        response = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False)
+        formatter = HtmlFormatter()
+        response = highlight(response, JsonLexer(), formatter)
+        style = "<style>" + formatter.get_style_defs() + "</style><br>"
+        return mark_safe(style + response)
+except ImportError:
+    pretty_json_field = None
+
 
 class AbstractScheduleAdmin(admin.ModelAdmin):
     list_display = ("id", "is_active", "cron", "next_run_at")
@@ -26,15 +41,17 @@ class AbstractTaskAdmin(admin.ModelAdmin):
 class ScheduleAdmin(AbstractScheduleAdmin):
     list_display = ("id", "name", "func", "is_active", "cron", "next_run_at")
     search_fields = ("name", "func")
-    fields = ("name", "func", "args", "args_pretty",
-              "is_active", "cron", "next_run_at", "last_run_at")
-    readonly_fields = ("args_pretty", )
+    fields = ("name", "func", "args",  "is_active", "cron", "next_run_at", "last_run_at")
+    readonly_fields = ()
 
-    def args_pretty(self, instance):
-        """Function to display pretty version of our data"""
-        return pretty_json_field(instance.args)
+    if pretty_json_field is not None:
+        fields = list(fields)
+        fields.insert(fields.index("args") + 1, "args_pretty")
+        readonly_fields += ("args_pretty",)
 
-    args_pretty.short_description = "args"
+        def args_pretty(self, instance):
+            return pretty_json_field(instance.args)
+        args_pretty.short_description = "Args (pretty json)"
 
 
 @admin.register(Task)
@@ -42,9 +59,9 @@ class TaskAdmin(AbstractTaskAdmin):
     list_display = ("id", "func", "run_at", "is_processed", "is_success")
     search_fields = ("func",)
     date_hierarchy = "run_at"
-    fields = ("func", "args", "args_pretty", "run_at", "is_processed",
-              "started_at", "finished_at", "is_success", "result", "result_pretty", "error")
-    readonly_fields = ("args_pretty", "result_pretty")
+    fields = ("func", "args", "run_at", "is_processed", "started_at",
+              "finished_at", "is_success", "result", "error")
+    readonly_fields = ()
     actions = ("rerun_task",)
 
     @admin.action(description="Rerun tasks")
@@ -57,31 +74,16 @@ class TaskAdmin(AbstractTaskAdmin):
         else:
             self.message_user(request, f"No tasks are created")
 
-    def args_pretty(self, instance):
-        """Function to display pretty version of our data"""
-        return pretty_json_field(instance.args)
+    if pretty_json_field is not None:
+        fields = list(fields)
+        fields.insert(fields.index("args") + 1, "args_pretty")
+        fields.insert(fields.index("result") + 1, "result_pretty")
+        readonly_fields += ("args_pretty", "result_pretty")
 
-    args_pretty.short_description = "args"
+        def args_pretty(self, instance):
+            return pretty_json_field(instance.args)
+        args_pretty.short_description = "Args (pretty json)"
 
-    def result_pretty(self, instance):
-        """Function to display pretty version of our data"""
-        return pretty_json_field(instance.result)
-
-    result_pretty.short_description = "result"
-
-
-try:
-    from pygments import highlight
-    from pygments.formatters import HtmlFormatter
-    from pygments.lexers import JsonLexer
-
-    def pretty_json_field(payload):
-        """Function to display pretty version of our data"""
-        response = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False)
-        formatter = HtmlFormatter()
-        response = highlight(response, JsonLexer(), formatter)
-        style = "<style>" + formatter.get_style_defs() + "</style><br>"
-        return mark_safe(style + response)
-except ImportError:
-    def pretty_json_field(payload):
-        return payload
+        def result_pretty(self, instance):
+            return pretty_json_field(instance.result)
+        result_pretty.short_description = "Result (pretty json)"
