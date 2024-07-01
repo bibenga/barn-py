@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from threading import Event, Thread
 from typing import Type
 
@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from .conf import Conf
 from .models import AbstractSchedule, Schedule
 from .signals import schedule_execute
 
@@ -18,11 +19,11 @@ class Scheduler:
     def __init__(
         self,
         model: Type[AbstractSchedule] | None,
-        with_deletion: bool = False,
+        with_deletion: bool | None = None,
     ) -> None:
         self._model = model or Schedule
-        self._with_deletion = with_deletion
-        self._cron = "* * * * * */5"
+        self._with_deletion = with_deletion if with_deletion is not None else Conf.SCHEDULE_DELETE_OLD
+        self._cron = Conf.SCHEDULE_POLL_CRON
         self._thread: Thread | None = None
         self._stop_event = Event()
 
@@ -121,10 +122,14 @@ class Scheduler:
 
     @transaction.atomic
     def _delete_old(self) -> None:
-        moment = timezone.now() - timedelta(days=30)
+        moment = timezone.now() - Conf.SCHEDULE_DELETE_OLDER_THAN
         schedule_qs = self._model.objects.filter(
             is_active=False,
             next_run_at__lt=moment
         )
         deleted, _ = schedule_qs.delete()
-        log.info("deleted %d old schedule entries", deleted)
+        log.log(
+            logging.DEBUG if deleted == 0 else logging.INFO,
+            "deleted %d schedules older than %s",
+            deleted, moment
+        )

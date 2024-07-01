@@ -1,6 +1,6 @@
 import logging
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime
 from threading import Event, Thread
 from typing import Type
 
@@ -8,6 +8,7 @@ from croniter import croniter
 from django.db import transaction
 from django.utils import timezone
 
+from .conf import Conf
 from .models import AbstractTask, Task
 
 log = logging.getLogger(__name__)
@@ -16,11 +17,11 @@ class Worker:
     def __init__(
         self,
         model: Type[AbstractTask] | None,
-        with_deletion: bool = False,
+        with_deletion: bool | None = None,
     ) -> None:
         self._model = model or Task
-        self._with_deletion = with_deletion
-        self._cron = "* * * * * */5"
+        self._with_deletion = with_deletion if with_deletion is not None else Conf.TASK_DELETE_OLD
+        self._cron = Conf.TASK_POLL_CRON
         self._thread: Thread | None = None
         self._stop_event = Event()
 
@@ -74,7 +75,7 @@ class Worker:
 
     @transaction.atomic
     def _delete_old(self) -> None:
-        moment = timezone.now() - timedelta(days=30)
+        moment = timezone.now() - Conf.TASK_DELETE_OLDER_THAN
         task_qs = self._model.objects.filter(
             is_processed=True,
             run_at__lt=moment
@@ -82,7 +83,7 @@ class Worker:
         deleted, _ = task_qs.delete()
         log.log(
             logging.DEBUG if deleted == 0 else logging.INFO,
-            "deleted %d old tasks older than %s",
+            "deleted %d tasks older than %s",
             deleted, moment
         )
 

@@ -2,10 +2,10 @@ import logging
 from datetime import datetime, timedelta
 from functools import wraps
 
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from .conf import Conf
 from .models import Schedule, Task
 
 log = logging.getLogger(__name__)
@@ -53,21 +53,21 @@ def async_task(
         run_at = eta
 
     if run_at:
-        if getattr(settings, "BARN_TASK_EAGER", False):
-            raise ValueError("A task cannot be executed in eager mode")
+        if Conf.TASK_SYNC:
+            raise RuntimeError("A task cannot be executed in eager mode")
         schedule = Task.objects.create(func=func, args=kwargs, run_at=run_at)
         log.info("the task %s is queued", task.pk)
         return schedule
     else:
         task = Task.objects.create(func=func, args=kwargs)
         log.info("the task %s is queued", task.pk)
-        if getattr(settings, "BARN_TASK_EAGER", False):
-            transaction.on_commit(eager_run, task)
+        if Conf.TASK_SYNC:
+            transaction.on_commit(_sync_call, task)
         return task
 
 
-def eager_run(task: Task) -> None:
-    log.info("run the task %s in eager mode", task)
+def _sync_call(task: Task) -> None:
+    log.info("run the task %s in sync mode", task)
     from .worker import Worker
     worker = Worker(Task, with_deletion=False)
     worker.call_task(task)
