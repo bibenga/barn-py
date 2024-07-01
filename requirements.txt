@@ -1,8 +1,9 @@
 django
 croniter
 
-setproctitle
+# setproctitle
 
 pytest
 pytest-django
-psycopg[binary]
+pytest-mock
+# psycopg[binary]
