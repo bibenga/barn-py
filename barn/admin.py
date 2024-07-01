@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import admin
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 from .models import Schedule, Task
@@ -44,6 +45,17 @@ class TaskAdmin(AbstractTaskAdmin):
     fields = ("func", "args", "args_pretty", "run_at", "is_processed",
               "started_at", "finished_at", "is_success", "result", "result_pretty", "error")
     readonly_fields = ("args_pretty", "result_pretty")
+    actions = ("rerun_task",)
+
+    @admin.action(description="Rerun tasks")
+    def rerun_task(self, request, queryset):
+        run_at = timezone.now()
+        tasks = [Task(func=t.func, args=t.args, run_at=run_at) for t in queryset if t.is_processed]
+        if tasks:
+            Task.objects.bulk_create(tasks)
+            self.message_user(request, f"{len(tasks)} tasks are created")
+        else:
+            self.message_user(request, f"No tasks are created")
 
     def args_pretty(self, instance):
         """Function to display pretty version of our data"""
