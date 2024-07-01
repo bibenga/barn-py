@@ -74,7 +74,7 @@ class Worker:
 
     @transaction.atomic
     def _delete_old(self) -> None:
-        moment = timezone.now() - timedelta(days=3)
+        moment = timezone.now() - timedelta(days=30)
         task_qs = self._model.objects.filter(
             is_processed=True,
             run_at__lt=moment
@@ -87,7 +87,7 @@ class Worker:
         )
 
     @transaction.atomic
-    def call_task_eager(self, task: AbstractTask) -> None:
+    def call_task(self, task: AbstractTask) -> None:
         self._call_task(task)
 
     def _call_task(self, task: AbstractTask) -> None:

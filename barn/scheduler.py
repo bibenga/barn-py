@@ -121,7 +121,7 @@ class Scheduler:
 
     @transaction.atomic
     def _delete_old(self) -> None:
-        moment = timezone.now() - timedelta(days=3)
+        moment = timezone.now() - timedelta(days=30)
         schedule_qs = self._model.objects.filter(
             is_active=False,
             next_run_at__lt=moment

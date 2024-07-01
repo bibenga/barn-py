@@ -69,5 +69,5 @@ def async_task(
 def eager_run(task: Task) -> None:
     log.info("run the task %s in eager mode", task)
     from .worker import Worker
-    worker = Worker()
-    worker.call_task_eager(task)
+    worker = Worker(Task, with_deletion=False)
+    worker.call_task(task)
