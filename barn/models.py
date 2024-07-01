@@ -13,7 +13,7 @@ def validate_cron(value):
         croniter(value)
     except (ValueError, TypeError) as err:
         raise ValidationError(
-            "%(value)s invalid cron value",
+            "%(value)r is invalid cron value",
             params={"value": value},
         ) from err
 

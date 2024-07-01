@@ -61,7 +61,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     "barn",
-    "stall",
+    "stable.stall",
 ]
 
 MIDDLEWARE = [

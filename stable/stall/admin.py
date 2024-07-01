@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from barn.admin import AbstractScheduleAdmin, AbstractTaskAdmin
-from stall.models import Schedule1, Schedule2, Task1, Task2
+from stable.stall.models import Schedule1, Schedule2, Task1, Task2
 
 
 @admin.register(Schedule1)
