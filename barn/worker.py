@@ -60,7 +60,10 @@ class Worker:
     def _process(self) -> None:
         while not self._stop_event.is_set():
             with transaction.atomic():
-                task_qs = self._model.objects.filter(is_processed=False).order_by("created", "id")
+                task_qs = self._model.objects.filter(
+                    created__lt=timezone.now(),
+                    is_processed=False,
+                ).order_by("created", "id")
                 task = task_qs.select_for_update(skip_locked=True).first()
                 if not task:
                     log.info("no pending task is found")
