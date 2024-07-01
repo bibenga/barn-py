@@ -11,7 +11,7 @@ class Schedule1Admin(AbstractScheduleAdmin):
 
 @admin.register(Task1)
 class Task1Admin(AbstractTaskAdmin):
-    list_display = ("id",  "arg1", "arg2", "created", "is_processed", "is_success")
+    list_display = ("id",  "arg1", "arg2", "run_at", "is_processed", "is_success")
 
 
 @admin.register(Schedule2)
@@ -21,4 +21,4 @@ class Schedule2Admin(AbstractScheduleAdmin):
 
 @admin.register(Task2)
 class Task2Admin(AbstractTaskAdmin):
-    list_display = ("id", "arg1", "created", "is_processed", "is_success")
+    list_display = ("id", "arg1", "run_at", "is_processed", "is_success")

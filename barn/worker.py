@@ -61,9 +61,9 @@ class Worker:
         while not self._stop_event.is_set():
             with transaction.atomic():
                 task_qs = self._model.objects.filter(
-                    created__lt=timezone.now(),
+                    run_at__lt=timezone.now(),
                     is_processed=False,
-                ).order_by("created", "id")
+                ).order_by("run_at", "id")
                 task = task_qs.select_for_update(skip_locked=True).first()
                 if not task:
                     log.info("no pending task is found")
@@ -77,7 +77,7 @@ class Worker:
         moment = timezone.now() - timedelta(days=3)
         task_qs = self._model.objects.filter(
             is_processed=True,
-            created__lt=moment
+            run_at__lt=moment
         )
         deleted, _ = task_qs.delete()
         log.log(

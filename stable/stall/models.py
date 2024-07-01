@@ -24,9 +24,6 @@ class Task1(AbstractTask):
 class Schedule2(AbstractSchedule):
     arg1 = models.IntegerField()
 
-    def create_task(self) -> AbstractTask:
-        return Task2(arg1=self.arg1)
-
     def process(self) -> None:
         self.arg1 -= 1
         Task2.objects.create(arg1=self.arg1)

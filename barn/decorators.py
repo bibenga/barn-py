@@ -43,31 +43,23 @@ def async_task(
     func = f"{func.__module__}.{func.__name__}"
     log.info("async_task: %s", func)
 
-    next_run_at = None
+    run_at = None
     if countdown:
         if isinstance(countdown, timedelta):
-            next_run_at = timezone.now() + countdown
+            run_at = timezone.now() + countdown
         else:
-            next_run_at = timezone.now() + timedelta(seconds=countdown)
+            run_at = timezone.now() + timedelta(seconds=countdown)
     elif eta:
-        next_run_at = eta
+        run_at = eta
 
-    if next_run_at:
-        schedule = Schedule.objects.create(
-            name=func,
-            next_run_at=next_run_at,
-            func=func,
-            args=kwargs,
-        )
-        log.info("the schedule %s is created at %s", schedule.pk, next_run_at)
+    if run_at:
         if getattr(settings, "BARN_TASK_EAGER", False):
             raise ValueError("A task cannot be executed in eager mode")
+        schedule = Task.objects.create(func=func, args=kwargs, run_at=run_at)
+        log.info("the task %s is queued", task.pk)
         return schedule
     else:
-        task = Task.objects.create(
-            func=func,
-            args=kwargs,
-        )
+        task = Task.objects.create(func=func, args=kwargs)
         log.info("the task %s is queued", task.pk)
         if getattr(settings, "BARN_TASK_EAGER", False):
             transaction.on_commit(eager_run, task)

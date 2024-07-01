@@ -35,14 +35,19 @@ class AbstractSchedule(models.Model):
     def clean(self) -> None:
         if not self.cron and not self.next_run_at:
             raise ValidationError("The cron and/or next_run_at is required")
-        return super().clean()
+        super().clean()
+
+    def save(self, *args, **kwargs) -> None:
+        if not self.cron and not self.next_run_at:
+            raise ValidationError("The cron and/or next_run_at is required")
+        super().save(*args, **kwargs)
 
     def process(self) -> None:
         raise NotImplementedError
 
 
 class AbstractTask(models.Model):
-    created = models.DateTimeField(db_index=True, blank=True)
+    run_at = models.DateTimeField(db_index=True, blank=True)
     is_processed = models.BooleanField(default=False)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -55,9 +60,13 @@ class AbstractTask(models.Model):
     def __str__(self) -> str:
         return f"task:{self.pk}"
 
-    def clean(self) -> None:
-        self.created = self.created or timezone.now()
-        return super().clean()
+    # def clean(self) -> None:
+    #     self.run_at = self.run_at or timezone.now()
+    #     return super().clean()
+
+    def save(self, *args, **kwargs) -> None:
+        self.run_at = self.run_at or timezone.now()
+        super().save(*args, **kwargs)
 
     def process(self) -> None:
         raise NotImplementedError
@@ -71,11 +80,15 @@ class Schedule(AbstractSchedule):
     def __str__(self) -> str:
         return f"{self.name}"
 
-    def clean(self) -> None:
+    # def clean(self) -> None:
+    #     self.name = self.name or self.func
+
+    def save(self, *args, **kwargs) -> None:
         self.name = self.name or self.func
+        super().save(*args, **kwargs)
 
     def process(self) -> None:
-        task = Task.objects.create(created=self.next_run_at, func=self.func, args=self.args)
+        task = Task.objects.create(run_at=self.next_run_at, func=self.func, args=self.args)
         log.info("the task %s is created for schedule %s", task.pk, self.pk)
 
 

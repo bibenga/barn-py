@@ -14,11 +14,11 @@ class AbstractScheduleAdmin(admin.ModelAdmin):
 
 
 class AbstractTaskAdmin(admin.ModelAdmin):
-    list_display = ("id", "created", "is_processed", "is_success")
+    list_display = ("id", "run_at", "is_processed", "is_success")
     list_filter = ("is_processed", "is_success")
-    ordering = ("-created",)
+    ordering = ("-run_at",)
     search_fields = ("func",)
-    date_hierarchy = "created"
+    date_hierarchy = "run_at"
 
 
 @admin.register(Schedule)
@@ -38,10 +38,10 @@ class ScheduleAdmin(AbstractScheduleAdmin):
 
 @admin.register(Task)
 class TaskAdmin(AbstractTaskAdmin):
-    list_display = ("id", "func", "created", "is_processed", "is_success")
+    list_display = ("id", "func", "run_at", "is_processed", "is_success")
     search_fields = ("func",)
-    date_hierarchy = "created"
-    fields = ("func", "args", "args_pretty", "created", "is_processed",
+    date_hierarchy = "run_at"
+    fields = ("func", "args", "args_pretty", "run_at", "is_processed",
               "started_at", "finished_at", "is_success", "result", "result_pretty", "error")
     readonly_fields = ("args_pretty", "result_pretty")
 
