@@ -70,7 +70,7 @@ class NotifyEndOfTrialPeriodTask(AbstractTask):
     user = models.ForeignKey('auth.User', models.CASCADE)
 
     def process(self) -> None:
-        if not self.user.email:
+        if self.user.email:
             send_mail(
                 "End of trial period",
                 f"Hello {self.user.get_full_name()}. Your trial period has ended.",
