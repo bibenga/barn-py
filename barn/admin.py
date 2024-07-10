@@ -33,7 +33,6 @@ class AbstractTaskAdmin(admin.ModelAdmin):
     list_display = ("id", "run_at", "is_processed", "is_success")
     list_filter = ("is_processed", "is_success")
     ordering = ("-run_at",)
-    search_fields = ("func",)
     date_hierarchy = "run_at"
 
 
