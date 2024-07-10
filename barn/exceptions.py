@@ -1,3 +1,0 @@
-
-class Retry(Exception):
-    pass
