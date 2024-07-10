@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 # dummy.delay()
 # dummy.apply_async(countdown=10)  # secs
 @task
-def dummy(**kwargs) -> str:
+def dummy(**kwargs) -> dict:
     log.info("dummy: %s", kwargs)
     kwargs["moment"] = datetime.now(UTC).isoformat()
     return kwargs

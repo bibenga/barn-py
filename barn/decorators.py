@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from functools import wraps
+from functools import partial, wraps
 
 from django.db import transaction
 from django.utils import timezone
@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 def task(func):
     @wraps(func)
-    def delay(**kwargs) -> None:
+    def delay(**kwargs) -> Task:
         return async_task(func, kwargs=kwargs)
 
     @wraps(func)
@@ -21,7 +21,7 @@ def task(func):
         kwargs: dict | None = None,
         countdown: timedelta | int | float | None = None,
         eta: datetime | None = None,
-    ) -> None:
+    ) -> Task:
         return async_task(
             func,
             kwargs=kwargs,
@@ -39,7 +39,7 @@ def async_task(
     kwargs: dict | None = None,
     countdown: timedelta | int | float | None = None,
     eta: datetime | None = None,
-) -> Task | Schedule:
+) -> Task:
     func = f"{func.__module__}.{func.__name__}"
     run_at = None
     if countdown:
@@ -50,18 +50,15 @@ def async_task(
     elif eta:
         run_at = eta
 
-    if run_at:
-        if Conf.TASK_SYNC:
+    task = Task.objects.create(func=func, args=kwargs, run_at=run_at)
+    log.info("the task %s is queued", task.pk)
+
+    if Conf.TASK_SYNC:
+        if run_at:
             raise RuntimeError("A task cannot be executed in eager mode")
-        task = Task.objects.create(func=func, args=kwargs, run_at=run_at)
-        log.info("the task %s is queued", task.pk)
-        return task
-    else:
-        task = Task.objects.create(func=func, args=kwargs)
-        log.info("the task %s is queued", task.pk)
-        if Conf.TASK_SYNC:
-            transaction.on_commit(_sync_call, task)
-        return task
+        transaction.on_commit(partial(_sync_call, task))
+
+    return task
 
 
 def _sync_call(task: Task) -> None:

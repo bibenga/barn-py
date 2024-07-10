@@ -33,5 +33,6 @@ class Conf(object, metaclass=MetaConf):
     def TASK_DELETE_OLD(cls) -> bool:
         return getattr(settings, "BARN_TASK_DELETE_OLD", True)
 
+    @classproperty
     def TASK_DELETE_OLDER_THAN(cls) -> timedelta:
         return timedelta(days=getattr(settings, "BARN_TASK_DELETE_OLDER_THAN", 30))
