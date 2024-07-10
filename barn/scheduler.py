@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from .conf import Conf
 from .models import AbstractSchedule, Schedule
-from .signals import schedule_execute
+from .signals import post_schedule_execute, pre_schedule_execute
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class Scheduler:
             # it will be called on next iteration if the next_run_at is near to now
             return
 
-        schedule_execute.send(sender=self, schedule=schedule)
+        pre_schedule_execute.send(sender=self, schedule=schedule)
         schedule.process()
 
         now = timezone.now()
@@ -113,10 +113,12 @@ class Scheduler:
         else:
             schedule.is_active = False
             # schedule.save(update_fields=["is_active", "last_run_at"])
+
+        post_schedule_execute.send(sender=self, schedule=schedule)
         schedule.save()
 
     def _delete_old(self) -> None:
-        if self._ttl is None:
+        if not self._ttl:
             return
         with transaction.atomic():
             moment = timezone.now() - self._ttl
@@ -127,6 +129,6 @@ class Scheduler:
             deleted, _ = schedule_qs.delete()
             log.log(
                 logging.DEBUG if deleted == 0 else logging.INFO,
-                "deleted %d schedules older than %s",
+                "deleted %d inactive schedules older than %s",
                 deleted, moment
             )

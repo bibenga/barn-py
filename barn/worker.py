@@ -4,14 +4,22 @@ from datetime import datetime
 from threading import Event, Thread
 from typing import Type
 
+import asgiref.local
 from croniter import croniter
 from django.db import transaction
 from django.utils import timezone
 
 from .conf import Conf
 from .models import AbstractTask, Task
+from .signals import post_task_execute, pre_task_execute
 
 log = logging.getLogger(__name__)
+
+_current_task = asgiref.local.Local()
+
+
+def get_current_taskt() -> AbstractTask | None:
+    return getattr(_current_task, "value", None)
 
 
 class Worker:
@@ -69,7 +77,7 @@ class Worker:
                 self._call_task(task)
 
     def _delete_old(self) -> None:
-        if self._ttl is None:
+        if not self._ttl:
             return
         with transaction.atomic():
             moment = timezone.now() - self._ttl
@@ -80,7 +88,7 @@ class Worker:
             deleted, _ = task_qs.delete()
             log.log(
                 logging.DEBUG if deleted == 0 else logging.INFO,
-                "deleted %d tasks older than %s",
+                "deleted %d finished tasks older than %s",
                 deleted, moment
             )
 
@@ -92,26 +100,37 @@ class Worker:
         self._call_task(task)
 
     def _call_task(self, task: AbstractTask) -> None:
+        _current_task.value = task
         log.info("process the task %s task", task)
+
         task.started_at = timezone.now()
         try:
+            pre_task_execute.send(sender=self, task=task)
+
             with transaction.atomic():
                 task.process()
+
+            task.is_processed = True
+            task.is_success = True
+            task.error = None
+            task.finished_at = timezone.now()
+
+            post_task_execute.send(sender=self, task=task, exc=None)
+            task.save()
+            log.info("the task %s is processed with success in %s", task.pk,
+                     task.finished_at - task.started_at)
+
         except Exception as exc:
-            log.info("the task %s is failed", task.pk, exc_info=True)
+            task.is_processed = True
             task.is_success = False
             task.error = "\n".join(traceback.format_exception(exc))
-            # post_execute.send(sender=self, task=task, success=False, result=None, exc=exc)
-        else:
-            log.info("the task %s is finished", task.pk)
-            task.is_success = True
-            # post_execute.send(sender=self, task=task, success=True, result=result, exc=None)
-        finally:
-            task.is_processed = True
             task.finished_at = timezone.now()
-            # task.save(update_fields=["is_processed", "started_at",
-            #                          "finished_at", "is_success", "result", "error"])
-            task.save()
 
-            log.info("the task %s is processed in %s", task.pk,
-                     task.finished_at - task.started_at)
+            post_task_execute.send(sender=self, task=task, exc=exc)
+            task.save()
+            log.info("the task %s is processed with error in %s", task.pk,
+                     task.finished_at - task.started_at, exc_info=True)
+
+        finally:
+
+            del _current_task.value
