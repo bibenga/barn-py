@@ -43,6 +43,9 @@ class Worker:
             self._stop_event.set()
             self._thread.join(60)
 
+    def run(self) -> None:
+        self._run()
+
     def _run(self) -> None:
         log.info("stated")
         try:
