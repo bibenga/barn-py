@@ -12,5 +12,5 @@ class SomeScheduleAdmin(AbstractScheduleAdmin):
 @admin.register(SomeTask)
 class SomeTaskAdmin(AbstractTaskAdmin):
     list_display = ("id", "correlation_id", "attempt", "max_attempts",
-                    "run_at", "status")
+                    "run_at", "colored_status")
     search_fields = ("correlation_id",)

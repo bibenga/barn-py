@@ -2,6 +2,7 @@ import json
 
 from django.contrib import admin
 from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from .models import Schedule, Task, TaskStatus
@@ -30,10 +31,23 @@ class AbstractScheduleAdmin(admin.ModelAdmin):
 
 
 class AbstractTaskAdmin(admin.ModelAdmin):
-    list_display = ("id", "run_at", "status")
+    list_display = ("id", "run_at", "colored_status")
     list_filter = ("status",)
     ordering = ("-run_at",)
     date_hierarchy = "run_at"
+
+    @admin.display(empty_value="unknown", ordering="status")
+    def colored_status(self, obj):
+        colors = {
+            TaskStatus.QUEUED: "grey",
+            TaskStatus.DONE: "green",
+            TaskStatus.FAILED: "red",
+        }
+        return format_html(
+            '<span style="color: {};">{}</span>',
+            colors[obj.status],
+            obj.get_status_display(),
+        )
 
 
 @admin.register(Schedule)
@@ -55,7 +69,7 @@ class ScheduleAdmin(AbstractScheduleAdmin):
 
 @admin.register(Task)
 class TaskAdmin(AbstractTaskAdmin):
-    list_display = ("id", "func", "run_at", "status")
+    list_display = ("id", "func", "run_at", "colored_status")
     search_fields = ("func",)
     date_hierarchy = "run_at"
     fields = ("func", "args", "run_at", "status", "started_at",
