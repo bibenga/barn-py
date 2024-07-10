@@ -105,12 +105,12 @@ class Worker:
         try:
             pre_task_execute.send(sender=self, task=task)
 
-            with transaction.atomic():
-                task.process()
+            task.process()
 
             task.is_processed = True
-            task.is_success = True
-            task.error = None
+            if task.is_success is None:
+                task.is_success = True
+                task.error = None
             task.finished_at = timezone.now()
 
             post_task_execute.send(sender=self, task=task, exc=None)

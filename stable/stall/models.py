@@ -1,36 +1,40 @@
-from django.db import models
+from datetime import timedelta
+
+from django.core.validators import MinValueValidator
+from django.db import models, transaction
+from django.utils import timezone
 
 from barn.models import AbstractSchedule, AbstractTask
 
 
-class Schedule1(AbstractSchedule):
-    arg1 = models.IntegerField()
-    arg2 = models.CharField(max_length=10)
+class SomeSchedule(AbstractSchedule):
+    max_attempts = models.IntegerField()
 
     def process(self) -> None:
-        self.arg1 += 1
-        Task1.objects.create(arg1=self.arg1, arg2=self.arg2)
+        SomeTask.objects.create(max_attempts=self.max_attempts)
 
 
-class Task1(AbstractTask):
-    arg1 = models.IntegerField()
-    arg2 = models.CharField(max_length=10)
-
-    def process(self) -> None:
-        self.arg1 += 1
-        self.arg2 = f"{self.arg2}:{self.arg1}"
-
-
-class Schedule2(AbstractSchedule):
-    arg1 = models.IntegerField()
+class SomeTask(AbstractTask):
+    attempt = models.IntegerField(
+        default=1,
+        validators=[MinValueValidator(1)]
+    )
+    max_attempts = models.IntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+    )
 
     def process(self) -> None:
-        self.arg1 -= 1
-        Task2.objects.create(arg1=self.arg1)
+        try:
+            with transaction.atomic():
+                raise RuntimeError()
+        except RuntimeError:
+            if self.attempt < self.max_attempts:
+                attempt = self.attempt + 1
+                SomeTask.objects.create(
+                    attempt=attempt,
+                    max_attempts=self.max_attempts,
+                    run_at=timezone.now() + timedelta(seconds=attempt)
+                )
+            raise
 
-
-class Task2(AbstractTask):
-    arg1 = models.IntegerField()
-
-    def process(self) -> None:
-        self.arg1 += 1

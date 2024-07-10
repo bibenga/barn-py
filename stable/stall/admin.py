@@ -1,24 +1,15 @@
 from django.contrib import admin
 
 from barn.admin import AbstractScheduleAdmin, AbstractTaskAdmin
-from stable.stall.models import Schedule1, Schedule2, Task1, Task2
+from stable.stall.models import SomeSchedule, SomeTask
 
 
-@admin.register(Schedule1)
-class Schedule1Admin(AbstractScheduleAdmin):
-    list_display = ("id", "arg1", "arg2", "is_active", "cron", "next_run_at")
+@admin.register(SomeSchedule)
+class SomeScheduleAdmin(AbstractScheduleAdmin):
+    list_display = ("id", "max_attempts", "is_active", "cron", "next_run_at")
 
 
-@admin.register(Task1)
-class Task1Admin(AbstractTaskAdmin):
-    list_display = ("id",  "arg1", "arg2", "run_at", "is_processed", "is_success")
+@admin.register(SomeTask)
+class SomeTaskAdmin(AbstractTaskAdmin):
+    list_display = ("id",  "attempt", "max_attempts", "run_at", "is_processed", "is_success")
 
-
-@admin.register(Schedule2)
-class Schedule2Admin(AbstractScheduleAdmin):
-    list_display = ("id", "arg1", "is_active", "cron", "next_run_at")
-
-
-@admin.register(Task2)
-class Task2Admin(AbstractTaskAdmin):
-    list_display = ("id", "arg1", "run_at", "is_processed", "is_success")
