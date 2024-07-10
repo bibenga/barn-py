@@ -30,11 +30,6 @@ class Conf(object, metaclass=MetaConf):
         return getattr(settings, "BARN_TASK_POLL_CRON", "* * * * *")
 
     @classproperty
-    def TASL_POLL_INTERVAL(cls) -> timedelta:
-        return as_timedelta(getattr(settings, "BARN_TASL_POLL_INTERVAL", None),
-                            timedelta(seconds=30))
-
-    @classproperty
     def TASK_FINISHED_TTL(cls) -> timedelta | None:
         value = getattr(settings, "BARN_TASK_FINISHED_TTL", None)
         if not value:
