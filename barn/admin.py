@@ -39,15 +39,17 @@ class AbstractTaskAdmin(admin.ModelAdmin):
     @admin.display(empty_value="unknown", ordering="status")
     def colored_status(self, obj):
         colors = {
-            TaskStatus.QUEUED: "grey",
             TaskStatus.DONE: "green",
-            TaskStatus.FAILED: "red",
+            TaskStatus.FAILED: "var(--error-fg)",
         }
-        return format_html(
-            '<span style="color: {};">{}</span>',
-            colors[obj.status],
-            obj.get_status_display(),
-        )
+        if obj.status in colors:
+            return format_html(
+                "<span style=\"color: {}\">{}</div>",
+                colors[obj.status],
+                obj.get_status_display(),
+            )
+        else:
+            return obj.get_status_display()
 
 
 @admin.register(Schedule)
