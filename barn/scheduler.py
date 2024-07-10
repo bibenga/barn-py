@@ -39,22 +39,20 @@ class Scheduler:
     def _run(self) -> None:
         log.info("stated")
         try:
-            self._process()
-            self._delete_old()
-
             while not self._stop_event.is_set():
-                now = timezone.now()
-                iter = croniter(self._cron, now)
-                next_run_at = iter.get_next(datetime)
-                sleep_seconds = next_run_at - now
-                log.info("sleep for %s", sleep_seconds)
-                if self._stop_event.wait(sleep_seconds.total_seconds()):
-                    break
-
                 self._process()
                 self._delete_old()
+                self._sleep()
         finally:
             log.info("finished")
+
+    def _sleep(self) -> None:
+        now = timezone.now()
+        iter = croniter(self._cron, now)
+        next_run_at = iter.get_next(datetime)
+        sleep_seconds = next_run_at - now
+        log.info("sleep for %s", sleep_seconds)
+        self._stop_event.wait(sleep_seconds.total_seconds())
 
     def _process(self) -> None:
         while not self._stop_event.is_set():
