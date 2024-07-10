@@ -2,12 +2,12 @@
 name = "barn"
 version = "0.0.1"
 authors = [
-  { name="Space Void", email="234253453453@43234234234234.com" },
+#  { name="Bibenga", email="" },
 ]
 description = "Lightweight scheduler and worker for Django using a database backend"
 license = {text = "MIT"}
 readme = "README.md"
-keywords = ["django", "distributed", "multiprocessing", "queue", "scheduler"]
+keywords = ["django", "distributed", "multiprocessing", "task", "scheduler"]
 classifiers = [
     'Environment :: Web Environment',
     'Framework :: Django',
@@ -16,13 +16,15 @@ classifiers = [
     "Operating System :: OS Independent",
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
     'Topic :: Internet :: WWW/HTTP',
     'Topic :: System :: Distributed Computing',
     'Topic :: Software Development :: Libraries :: Python Modules',
 ]
 
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "django>=5,<6",
     "croniter>=2,<3",
