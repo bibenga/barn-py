@@ -27,6 +27,7 @@ LOGGING = {
     },
     "loggers": {
         # "django.db": {"level": "DEBUG"}
+        "barn": {"level": "DEBUG"}
     },
     "root": {
         "level": "INFO",

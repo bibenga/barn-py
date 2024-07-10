@@ -56,18 +56,18 @@ class Scheduler:
         log.debug("sleep for %.2fs", timeout)
         self._stop_event.wait(timeout)
 
+    @transaction.atomic
     def _process(self) -> None:
-        while not self._stop_event.is_set():
-            with transaction.atomic():
-                schedule_qs = self._model.objects.filter(
-                    Q(next_run_at__isnull=True) | Q(next_run_at__lt=timezone.now()),
-                    is_active=True,
-                ).order_by("next_run_at", "id")
-                schedule = schedule_qs.select_for_update(skip_locked=True).first()
-                if not schedule:
-                    log.debug("no pending schedules")
-                    break
-                self._process_schedule(schedule)
+        schedule_qs = self._model.objects.filter(
+            Q(next_run_at__isnull=True) | Q(next_run_at__lt=timezone.now()),
+            is_active=True,
+        ).order_by("next_run_at", "id")
+        processed = 0
+        for schedule in schedule_qs.select_for_update(skip_locked=True):
+            self._process_schedule(schedule)
+            processed += 1
+        if processed == 0:
+            log.debug("no pending schedules")
 
     def _process_schedule(self, schedule: AbstractSchedule) -> None:
         log.info("found a schedule %s", schedule.pk)
@@ -78,10 +78,9 @@ class Scheduler:
             schedule.save(update_fields=["is_active"])
             return
 
-        now = timezone.now()
-        if not schedule.next_run_at:
+        elif not schedule.next_run_at and schedule.cron:
             try:
-                iter = croniter(schedule.cron, now)
+                iter = croniter(schedule.cron, timezone.now())
             except (TypeError, ValueError):
                 log.error("the schedule %s has an invalid cron", schedule.pk, exc_info=True)
                 schedule.is_active = False
