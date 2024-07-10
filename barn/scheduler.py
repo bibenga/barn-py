@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from random import random
 from threading import Event, Thread
 from typing import Type
 
@@ -21,7 +22,7 @@ class Scheduler:
         model: Type[AbstractSchedule] | None,
     ) -> None:
         self._model = model or Schedule
-        self._cron = Conf.SCHEDULE_POLL_CRON
+        self._interval = Conf.SCHEDULE_POLL_INTERVAL.total_seconds()
         self._ttl = Conf.SCHEDULE_FINISHED_TTL
         self._thread: Thread | None = None
         self._stop_event = Event()
@@ -50,12 +51,10 @@ class Scheduler:
             log.info("finished")
 
     def _sleep(self) -> None:
-        now = timezone.now()
-        iter = croniter(self._cron, now)
-        next_run_at = iter.get_next(datetime)
-        sleep_seconds = next_run_at - now
-        log.info("sleep for %s", sleep_seconds)
-        self._stop_event.wait(sleep_seconds.total_seconds())
+        jitter = self._interval / 10
+        timeout = self._interval + (jitter * random() - jitter / 2)
+        log.debug("sleep for %.2fs", timeout)
+        self._stop_event.wait(timeout)
 
     def _process(self) -> None:
         while not self._stop_event.is_set():
@@ -65,11 +64,10 @@ class Scheduler:
                     is_active=True,
                 ).order_by("next_run_at", "id")
                 schedule = schedule_qs.select_for_update(skip_locked=True).first()
-                if schedule:
-                    self._process_schedule(schedule)
-                else:
-                    log.info("no pending schedule is found")
+                if not schedule:
+                    log.debug("no pending schedules")
                     break
+                self._process_schedule(schedule)
 
     def _process_schedule(self, schedule: AbstractSchedule) -> None:
         log.info("found a schedule %s", schedule.pk)

@@ -11,8 +11,9 @@ class MetaConf(type):
 
 class Conf(object, metaclass=MetaConf):
     @classproperty
-    def SCHEDULE_POLL_CRON(cls) -> str:
-        return getattr(settings, "BARN_SCHEDULE_POLL_CRON", "* * * * *")
+    def SCHEDULE_POLL_INTERVAL(cls) -> timedelta:
+        return as_timedelta(getattr(settings, "BARN_SCHEDULE_POLL_INTERVAL", None),
+                            timedelta(seconds=60))
 
     @classproperty
     def SCHEDULE_FINISHED_TTL(cls) -> timedelta | None:
@@ -26,8 +27,9 @@ class Conf(object, metaclass=MetaConf):
         return getattr(settings, "BARN_TASK_SYNC", False)
 
     @classproperty
-    def TASK_POLL_CRON(cls) -> str:
-        return getattr(settings, "BARN_TASK_POLL_CRON", "* * * * *")
+    def TASL_POLL_INTERVAL(cls) -> timedelta:
+        return as_timedelta(getattr(settings, "BARN_TASL_POLL_INTERVAL", None),
+                            timedelta(seconds=60))
 
     @classproperty
     def TASK_FINISHED_TTL(cls) -> timedelta | None:

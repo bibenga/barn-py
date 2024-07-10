@@ -1,11 +1,10 @@
 import logging
 import traceback
-from datetime import datetime
+from random import random
 from threading import Event, Thread
 from typing import Type
 
 import asgiref.local
-from croniter import croniter
 from django.db import transaction
 from django.utils import timezone
 
@@ -28,7 +27,7 @@ class Worker:
         model: Type[AbstractTask] | None,
     ) -> None:
         self._model = model or Task
-        self._cron = Conf.TASK_POLL_CRON
+        self._interval = Conf.TASL_POLL_INTERVAL.total_seconds()
         self._ttl = Conf.TASK_FINISHED_TTL
         self._thread: Thread | None = None
         self._stop_event = Event()
@@ -57,12 +56,10 @@ class Worker:
             log.info("finished")
 
     def _sleep(self) -> None:
-        now = timezone.now()
-        iter = croniter(self._cron, now)
-        next_run_at = iter.get_next(datetime)
-        sleep_seconds = next_run_at - now
-        log.info("sleep for %s", sleep_seconds)
-        self._stop_event.wait(sleep_seconds.total_seconds())
+        jitter = self._interval / 10
+        timeout = self._interval + (jitter * random() - jitter / 2)
+        log.debug("sleep for %.2fs", timeout)
+        self._stop_event.wait(timeout)
 
     def _process(self) -> None:
         while not self._stop_event.is_set():
@@ -73,10 +70,8 @@ class Worker:
                 ).order_by("run_at", "id")
                 task = task_qs.select_for_update(skip_locked=True).first()
                 if not task:
-                    log.info("no pending task is found")
+                    log.debug("no pending tasks")
                     break
-                log.info("found a task %s", task.pk)
-
                 self._call_task(task)
 
     def _delete_old(self) -> None:
