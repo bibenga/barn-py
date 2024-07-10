@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .conf import Conf
-from .models import AbstractTask, Task
+from .models import AbstractTask, Task, TaskStatus
 from .signals import post_task_execute, pre_task_execute
 
 log = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class Worker:
             with transaction.atomic():
                 task_qs = self._model.objects.filter(
                     run_at__lt=timezone.now(),
-                    is_processed=False,
+                    status=TaskStatus.QUEUED,
                 ).order_by("run_at", "id")
                 task = task_qs.select_for_update(skip_locked=True).first()
                 if not task:
@@ -80,7 +80,7 @@ class Worker:
         with transaction.atomic():
             moment = timezone.now() - self._ttl
             task_qs = self._model.objects.filter(
-                is_processed=True,
+                status__in=[TaskStatus.DONE, TaskStatus.FAILED],
                 run_at__lt=moment
             )
             deleted, _ = task_qs.delete()
@@ -93,7 +93,7 @@ class Worker:
     @transaction.atomic
     def sync_call_task(self, task: AbstractTask) -> None:
         task = self._model.objects.select_for_update().get(pk=task.pk)
-        if task.is_processed:
+        if task.status != TaskStatus.QUEUED:
             raise ValueError("The task already processed. Is worker running?")
         self._call_task(task)
 
@@ -107,10 +107,8 @@ class Worker:
 
             task.process()
 
-            task.is_processed = True
-            if task.is_success is None:
-                task.is_success = True
-                task.error = None
+            task.status = TaskStatus.DONE
+            task.error = None
             task.finished_at = timezone.now()
 
             post_task_execute.send(sender=self, task=task, exc=None)
@@ -119,8 +117,7 @@ class Worker:
                      task.finished_at - task.started_at)
 
         except Exception as exc:
-            task.is_processed = True
-            task.is_success = False
+            task.status = TaskStatus.FAILED
             task.error = "\n".join(traceback.format_exception(exc))
             task.finished_at = timezone.now()
 

@@ -3,8 +3,9 @@ import logging
 from croniter import croniter
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils.module_loading import import_string
 from django.utils import timezone
+from django.utils.module_loading import import_string
+from django.utils.translation import gettext_lazy
 
 log = logging.getLogger(__name__)
 
@@ -46,12 +47,17 @@ class AbstractSchedule(models.Model):
         raise NotImplementedError
 
 
+class TaskStatus(models.TextChoices):
+    QUEUED = "Q", gettext_lazy("Queued")
+    DONE = "D", gettext_lazy("Done")
+    FAILED = "F", gettext_lazy("Failed")
+
+
 class AbstractTask(models.Model):
     run_at = models.DateTimeField(db_index=True, blank=True)
-    is_processed = models.BooleanField(default=False)
+    status = models.CharField(max_length=1, choices=TaskStatus.choices, default=TaskStatus.QUEUED)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
-    is_success = models.BooleanField(null=True, blank=True)
     error = models.TextField(null=True, blank=True)
 
     class Meta:

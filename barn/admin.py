@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
-from .models import Schedule, Task
+from .models import Schedule, Task, TaskStatus
 
 try:
     from pygments import highlight
@@ -30,8 +30,8 @@ class AbstractScheduleAdmin(admin.ModelAdmin):
 
 
 class AbstractTaskAdmin(admin.ModelAdmin):
-    list_display = ("id", "run_at", "is_processed", "is_success")
-    list_filter = ("is_processed", "is_success")
+    list_display = ("id", "run_at", "status")
+    list_filter = ("status",)
     ordering = ("-run_at",)
     date_hierarchy = "run_at"
 
@@ -55,18 +55,19 @@ class ScheduleAdmin(AbstractScheduleAdmin):
 
 @admin.register(Task)
 class TaskAdmin(AbstractTaskAdmin):
-    list_display = ("id", "func", "run_at", "is_processed", "is_success")
+    list_display = ("id", "func", "run_at", "status")
     search_fields = ("func",)
     date_hierarchy = "run_at"
-    fields = ("func", "args", "run_at", "is_processed", "started_at",
-              "finished_at", "is_success", "result", "error")
+    fields = ("func", "args", "run_at", "status", "started_at",
+              "finished_at", "result", "error")
     readonly_fields = ()
     actions = ("rerun_task",)
 
     @admin.action(description="Rerun tasks")
     def rerun_task(self, request, queryset):
         run_at = timezone.now()
-        tasks = [Task(func=t.func, args=t.args, run_at=run_at) for t in queryset if t.is_processed]
+        queryset = queryset.filter(status=TaskStatus.FAILED)
+        tasks = [Task(func=t.func, args=t.args, run_at=run_at) for t in queryset]
         if tasks:
             Task.objects.bulk_create(tasks)
             self.message_user(request, f"{len(tasks)} tasks are created")
