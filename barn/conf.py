@@ -15,11 +15,11 @@ class Conf(object, metaclass=MetaConf):
         return getattr(settings, "BARN_SCHEDULE_POLL_CRON", "* * * * *")
 
     @classproperty
-    def SCHEDULE_DELETE_OLD(cls) -> bool:
-        return getattr(settings, "BARN_SCHEDULE_DELETE_OLD", False)
-
-    def SCHEDULE_DELETE_OLDER_THAN(cls) -> timedelta:
-        return timedelta(days=getattr(settings, "BARN_SCHEDULE_DELETE_OLDER_THAN", 30))
+    def SCHEDULE_FINISHED_TTL(cls) -> timedelta | None:
+        value = getattr(settings, "BARN_SCHEDULE_FINISHED_TTL", None)
+        if not value:
+            return None
+        return as_timedelta(value, timedelta(days=30))
 
     @classproperty
     def TASK_SYNC(cls) -> bool:
@@ -30,9 +30,23 @@ class Conf(object, metaclass=MetaConf):
         return getattr(settings, "BARN_TASK_POLL_CRON", "* * * * *")
 
     @classproperty
-    def TASK_DELETE_OLD(cls) -> bool:
-        return getattr(settings, "BARN_TASK_DELETE_OLD", True)
+    def TASL_POLL_INTERVAL(cls) -> timedelta:
+        return as_timedelta(getattr(settings, "BARN_TASL_POLL_INTERVAL", None),
+                            timedelta(seconds=30))
 
     @classproperty
-    def TASK_DELETE_OLDER_THAN(cls) -> timedelta:
-        return timedelta(days=getattr(settings, "BARN_TASK_DELETE_OLDER_THAN", 30))
+    def TASK_FINISHED_TTL(cls) -> timedelta | None:
+        value = getattr(settings, "BARN_TASK_FINISHED_TTL", None)
+        if not value:
+            return None
+        return as_timedelta(value, timedelta(days=30))
+
+
+def as_timedelta(value: None | int | float | timedelta, deault: timedelta) -> timedelta:
+    if not value:
+        return deault
+    elif isinstance(value, timedelta):
+        return value
+    elif isinstance(value, (int, float)):
+        return timedelta(seconds=value)
+    raise ValueError("incorrect value")

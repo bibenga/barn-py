@@ -17,11 +17,10 @@ class Worker:
     def __init__(
         self,
         model: Type[AbstractTask] | None,
-        with_deletion: bool | None = None,
     ) -> None:
         self._model = model or Task
-        self._with_deletion = with_deletion if with_deletion is not None else Conf.TASK_DELETE_OLD
         self._cron = Conf.TASK_POLL_CRON
+        self._ttl = Conf.TASK_FINISHED_TTL
         self._thread: Thread | None = None
         self._stop_event = Event()
 
@@ -33,28 +32,25 @@ class Worker:
     def stop(self) -> None:
         if not self._stop_event.is_set():
             self._stop_event.set()
-            self._thread.join(5)
+            self._thread.join(60)
 
     def _run(self) -> None:
         log.info("stated")
         try:
             self._process()
-            if self._with_deletion:
-                self._delete_old()
+            self._delete_old()
+
             while not self._stop_event.is_set():
                 now = timezone.now()
                 iter = croniter(self._cron, now)
                 next_run_at = iter.get_next(datetime)
                 sleep_seconds = next_run_at - now
-                # add some jitter
-                # if Conf.USE_JITTER:
-                #     sleep_seconds += timedelta(seconds=random() / 5)
                 log.info("sleep for %s", sleep_seconds)
                 if self._stop_event.wait(sleep_seconds.total_seconds()):
                     break
+
                 self._process()
-                if self._with_deletion:
-                    self._delete_old()
+                self._delete_old()
         finally:
             log.info("finished")
 
@@ -73,19 +69,21 @@ class Worker:
 
                 self._call_task(task)
 
-    @transaction.atomic
     def _delete_old(self) -> None:
-        moment = timezone.now() - Conf.TASK_DELETE_OLDER_THAN
-        task_qs = self._model.objects.filter(
-            is_processed=True,
-            run_at__lt=moment
-        )
-        deleted, _ = task_qs.delete()
-        log.log(
-            logging.DEBUG if deleted == 0 else logging.INFO,
-            "deleted %d tasks older than %s",
-            deleted, moment
-        )
+        if self._ttl is None:
+            return
+        with transaction.atomic():
+            moment = timezone.now() - self._ttl
+            task_qs = self._model.objects.filter(
+                is_processed=True,
+                run_at__lt=moment
+            )
+            deleted, _ = task_qs.delete()
+            log.log(
+                logging.DEBUG if deleted == 0 else logging.INFO,
+                "deleted %d tasks older than %s",
+                deleted, moment
+            )
 
     @transaction.atomic
     def sync_call_task(self, task: AbstractTask) -> None:
