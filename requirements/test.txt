@@ -1,4 +1,5 @@
 pytest
 pytest-django
 pytest-mock
+pytest-asyncio
 psycopg[binary]

@@ -7,7 +7,7 @@ from barn.decorators import task
 log = logging.getLogger(__name__)
 
 
-# from stable.stall.tasks import simple_task, task_with_retry
+# from tests.stable.stall.tasks import simple_task, task_with_retry
 # simple_task.delay()
 # task_with_retry.delay()
 # task_with_retry.apply_async(countdown=10)  # secs

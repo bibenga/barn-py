@@ -1,7 +1,7 @@
 import pytest
 
 from barn.worker import Worker
-from barn.models import Task
+from barn.models import Task, TaskStatus
 
 
 @pytest.mark.django_db(transaction=True)
@@ -15,7 +15,6 @@ class TestWorker:
         worker._process_one(task)
 
         task.refresh_from_db()
-        assert task.is_processed
-        assert task.is_success
+        assert task.status == TaskStatus.DONE
 
         task_process.assert_called_once()
