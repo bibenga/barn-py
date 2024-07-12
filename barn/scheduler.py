@@ -6,7 +6,6 @@ from random import random
 from typing import Type
 
 from asgiref.sync import sync_to_async
-from croniter import croniter
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -16,6 +15,15 @@ from .models import AbstractSchedule, Schedule
 from .signals import post_schedule_execute, pre_schedule_execute
 
 log = logging.getLogger(__name__)
+
+
+def croniter(expr, dt):
+    try:
+        from croniter import croniter
+    except ImportError:
+        raise ValueError("croniter is not installed")
+    else:
+        return croniter(expr, dt)
 
 
 class Scheduler:

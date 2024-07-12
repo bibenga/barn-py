@@ -1,6 +1,5 @@
 import logging
 
-from croniter import croniter
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
@@ -11,6 +10,10 @@ log = logging.getLogger(__name__)
 
 
 def validate_cron(value):
+    try:
+        from croniter import croniter
+    except ImportError:
+        raise ValidationError("croniter is not installed")
     try:
         croniter(value)
     except (ValueError, TypeError) as err:
