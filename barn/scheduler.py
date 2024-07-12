@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 class Scheduler:
     def __init__(
         self,
-        model: Type[AbstractSchedule] | None,
+        model: Type[AbstractSchedule] | None = None,
     ) -> None:
         self._model = model or Schedule
         self._interval: float = Conf.SCHEDULE_POLL_INTERVAL.total_seconds()

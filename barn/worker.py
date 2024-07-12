@@ -27,7 +27,7 @@ def get_current_taskt() -> AbstractTask | None:
 class Worker:
     def __init__(
         self,
-        model: Type[AbstractTask] | None,
+        model: Type[AbstractTask] | None = None,
     ) -> None:
         self._model = model or Task
         self._interval: float = Conf.TASL_POLL_INTERVAL.total_seconds()
