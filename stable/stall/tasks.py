@@ -1,21 +1,19 @@
 import logging
-from datetime import UTC, datetime
-from datetime import timedelta
 
-from django.core.validators import MinValueValidator
-from django.db import models, transaction
-from django.utils import timezone
+from django.db import transaction
 
 from barn.decorators import task
 
 log = logging.getLogger(__name__)
 
 
-# from stable.stall.tasks import some_task
-# some_task.delay()
-# some_task.apply_async(countdown=10)  # secs
+# from stable.stall.tasks import simple_task, task_with_retry
+# simple_task.delay()
+# task_with_retry.delay()
+# task_with_retry.apply_async(countdown=10)  # secs
+
 @task
-def some_task(attempt: int = 1, max_attempts: int = 5) -> str:
+def task_with_retry(attempt: int = 1, max_attempts: int = 5) -> str:
     log.info("some_task: attempt=%r, max_attempts=%r", attempt, max_attempts)
     try:
         with transaction.atomic():
@@ -23,7 +21,7 @@ def some_task(attempt: int = 1, max_attempts: int = 5) -> str:
     except RuntimeError:
         if attempt < max_attempts:
             attempt += 1
-            some_task.apply_async(
+            task_with_retry.apply_async(
                 kwargs=dict(
                     attempt=attempt,
                     max_attempts=max_attempts,
@@ -31,3 +29,9 @@ def some_task(attempt: int = 1, max_attempts: int = 5) -> str:
                 countdown=attempt,
             )
         raise
+
+
+@task
+def simple_task(attempt: int = 1, max_attempts: int = 5) -> str:
+    log.info("some_task: attempt=%r, max_attempts=%r", attempt, max_attempts)
+    return "ok"

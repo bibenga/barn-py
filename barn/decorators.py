@@ -6,35 +6,35 @@ from django.db import transaction
 from django.utils import timezone
 
 from .conf import Conf
-from .models import Schedule, Task
+from .models import Task
 
 log = logging.getLogger(__name__)
 
 
 def task(func):
     @wraps(func)
-    def delay(**kwargs) -> Task:
-        return async_task(func, kwargs=kwargs)
+    def _delay(**kwargs) -> Task:
+        return apply_async(func, kwargs=kwargs)
 
     @wraps(func)
-    def apply_async(
+    def _apply_async(
         kwargs: dict | None = None,
         countdown: timedelta | int | float | None = None,
         eta: datetime | None = None,
     ) -> Task:
-        return async_task(
+        return apply_async(
             func,
             kwargs=kwargs,
             countdown=countdown,
             eta=eta,
         )
 
-    func.delay = delay
-    func.apply_async = apply_async
+    func.delay = _delay
+    func.apply_async = _apply_async
     return func
 
 
-def async_task(
+def apply_async(
     func,
     kwargs: dict | None = None,
     countdown: timedelta | int | float | None = None,
@@ -56,13 +56,15 @@ def async_task(
     if Conf.TASK_SYNC:
         if run_at:
             raise RuntimeError("A task cannot be executed in eager mode")
-        transaction.on_commit(partial(_sync_call, task))
+
+        def _call() -> None:
+            log.warning("run the task %s in sync mode", task)
+            from .worker import Worker
+            worker = Worker(Task)
+            worker.sync_call_task(task)
+
+        transaction.on_commit(_call)
 
     return task
 
 
-def _sync_call(task: Task) -> None:
-    log.info("run the task %s in sync mode", task)
-    from .worker import Worker
-    worker = Worker(Task)
-    worker.sync_call_task(task)

@@ -1,9 +1,11 @@
+import asyncio
 import logging
-from datetime import datetime
+from contextlib import suppress
+from datetime import datetime, timedelta
 from random import random
-from threading import Event, Thread
 from typing import Type
 
+from asgiref.sync import sync_to_async
 from croniter import croniter
 from django.db import transaction
 from django.db.models import Q
@@ -22,40 +24,42 @@ class Scheduler:
         model: Type[AbstractSchedule] | None,
     ) -> None:
         self._model = model or Schedule
-        self._interval = Conf.SCHEDULE_POLL_INTERVAL.total_seconds()
-        self._ttl = Conf.SCHEDULE_FINISHED_TTL
-        self._thread: Thread | None = None
-        self._stop_event = Event()
+        self._interval: float = Conf.SCHEDULE_POLL_INTERVAL.total_seconds()
+        self._ttl: timedelta | None = Conf.SCHEDULE_FINISHED_TTL
+        self._stop_event = asyncio.Event()
+        self._thread: asyncio.Task | None = None
 
-    def start(self) -> None:
+    async def start(self) -> None:
         self._stop_event.clear()
-        self._thread = Thread(name="scheduler", target=self._run, daemon=True)
-        self._thread.start()
+        self._thread = asyncio.create_task(self._run(), name="scheduler")
 
-    def stop(self) -> None:
-        if not self._stop_event.is_set():
+    async def stop(self) -> None:
+        if self._thread and not self._stop_event.is_set():
             self._stop_event.set()
-            self._thread.join(60)
+            await self._thread
 
-    def run(self) -> None:
-        self._run()
+    async def run(self) -> None:
+        await self._run()
 
-    def _run(self) -> None:
+    async def _run(self) -> None:
         log.info("stated")
         try:
             while not self._stop_event.is_set():
-                self._process()
-                self._delete_old()
-                self._sleep()
+                await self._process()
+                if self._ttl:
+                    await self._delete_old()
+                await self._sleep()
         finally:
             log.info("finished")
 
-    def _sleep(self) -> None:
+    async def _sleep(self) -> None:
         jitter = self._interval / 10
         timeout = self._interval + (jitter * random() - jitter / 2)
         log.debug("sleep for %.2fs", timeout)
-        self._stop_event.wait(timeout)
+        with suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(self._stop_event.wait(), 5)
 
+    @sync_to_async
     @transaction.atomic
     def _process(self) -> None:
         schedule_qs = self._model.objects.filter(
@@ -64,12 +68,12 @@ class Scheduler:
         ).order_by("next_run_at", "id")
         processed = 0
         for schedule in schedule_qs.select_for_update(skip_locked=True):
-            self._process_schedule(schedule)
+            self._process_one(schedule)
             processed += 1
         if processed == 0:
             log.debug("no pending schedules")
 
-    def _process_schedule(self, schedule: AbstractSchedule) -> None:
+    def _process_one(self, schedule: AbstractSchedule) -> None:
         log.info("found a schedule %s", schedule.pk)
 
         if not schedule.next_run_at and not schedule.cron:
@@ -117,18 +121,17 @@ class Scheduler:
         post_schedule_execute.send(sender=self, schedule=schedule)
         schedule.save()
 
+    @sync_to_async
+    @transaction.atomic
     def _delete_old(self) -> None:
-        if not self._ttl:
-            return
-        with transaction.atomic():
-            moment = timezone.now() - self._ttl
-            schedule_qs = self._model.objects.filter(
-                is_active=False,
-                next_run_at__lt=moment
-            )
-            deleted, _ = schedule_qs.delete()
-            log.log(
-                logging.DEBUG if deleted == 0 else logging.INFO,
-                "deleted %d inactive schedules older than %s",
-                deleted, moment
-            )
+        moment = timezone.now() - self._ttl
+        schedule_qs = self._model.objects.filter(
+            is_active=False,
+            next_run_at__lt=moment
+        )
+        deleted, _ = schedule_qs.delete()
+        log.log(
+            logging.DEBUG if deleted == 0 else logging.INFO,
+            "deleted %d inactive schedules older than %s",
+            deleted, moment
+        )

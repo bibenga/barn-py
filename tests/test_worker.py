@@ -12,7 +12,7 @@ class TestWorker:
         task = Task.objects.create(func="func")
 
         worker = Worker(Task)
-        worker._call_task(task)
+        worker._process_one(task)
 
         task.refresh_from_db()
         assert task.is_processed
