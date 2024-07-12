@@ -14,6 +14,10 @@ class TestScheduler:
         await scheduler._process()
         _process_one.assert_not_called()
 
+        await Schedule.objects.acreate(cron="* * * * *", is_active=False)
+        await scheduler._process()
+        _process_one.assert_not_called()
+
         await Schedule.objects.acreate(cron="* * * * *")
         await scheduler._process()
         _process_one.assert_called_once()
