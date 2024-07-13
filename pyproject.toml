@@ -1,6 +1,6 @@
 [project]
 name = "task-barn"
-version = "0.2.1"
+version = "0.2.0"
 authors = [
 #  { name="Bibenga", email="" },
 ]
