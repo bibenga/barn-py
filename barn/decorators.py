@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime, timedelta
-from functools import partial, wraps
+from functools import wraps
 
 from django.db import transaction
+from django.db.models import JSONField, Q, Value
 from django.utils import timezone
 
 from .conf import Conf
@@ -14,33 +15,37 @@ log = logging.getLogger(__name__)
 def task(func):
     @wraps(func)
     def _delay(**kwargs) -> Task:
-        return apply_async(func, kwargs=kwargs)
+        return apply_async(func, args=kwargs)
 
     @wraps(func)
     def _apply_async(
-        kwargs: dict | None = None,
+        args: dict | None = None,
         countdown: timedelta | int | float | None = None,
         eta: datetime | None = None,
     ) -> Task:
         return apply_async(
             func,
-            kwargs=kwargs,
+            args=args,
             countdown=countdown,
             eta=eta,
         )
 
+    @wraps(func)
+    def _cancel(**kwargs) -> bool:
+        return cancel_async(func, args=kwargs)
+
     func.delay = _delay
     func.apply_async = _apply_async
+    func.cancel = _cancel
     return func
 
 
 def apply_async(
     func,
-    kwargs: dict | None = None,
+    args: dict | None = None,
     countdown: timedelta | int | float | None = None,
     eta: datetime | None = None,
 ) -> Task:
-    func = f"{func.__module__}.{func.__name__}"
     run_at = None
     if countdown:
         if isinstance(countdown, timedelta):
@@ -50,7 +55,11 @@ def apply_async(
     elif eta:
         run_at = eta
 
-    task = Task.objects.create(func=func, args=kwargs, run_at=run_at)
+    task = Task.objects.create(
+        func=f"{func.__module__}.{func.__name__}",
+        args=args,
+        run_at=run_at,
+    )
     log.info("the task %s is queued", task.pk)
 
     if Conf.TASK_SYNC:
@@ -68,3 +77,16 @@ def apply_async(
     return task
 
 
+def cancel_async(
+    func,
+    args: dict | None = None,
+) -> bool:
+    q = Q(func=f"{func.__module__}.{func.__name__}")
+    if args is None:
+        q &= Q(args=None) | Q(args=Value(None, JSONField()))
+    elif args:
+        # q = Q(args__contains=kwargs)
+        for key, value in args.items():
+            q &= Q(**{f"args__{key}": value})
+    deleted, _ = Task.objects.filter(q).delete()
+    return deleted > 0
