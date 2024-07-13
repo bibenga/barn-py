@@ -1,3 +1,4 @@
+from datetime import timedelta
 import pytest
 from django.utils import timezone
 
@@ -25,28 +26,37 @@ class TestScheduler:
     def test__process_one_oneshot(self, mocker):
         schedule_process = mocker.patch.object(Schedule, "process")
 
-        schedule = Schedule.objects.create(next_run_at=timezone.now())
+        schedule = Schedule.objects.create()
 
         scheduler = Scheduler()
         scheduler._process_one(schedule)
+        schedule_process.assert_called_once()
 
         schedule.refresh_from_db()
         assert not schedule.is_active
 
-        schedule_process.assert_called_once()
-
-    def test__process_one_cron(self, mocker):
+    def test__process_one_interval(self, mocker):
         schedule_process = mocker.patch.object(Schedule, "process")
 
-        schedule = Schedule.objects.create(cron="* * * * * ")
+        schedule = Schedule.objects.create(interval=timedelta(seconds=2))
 
         scheduler = Scheduler()
         scheduler._process_one(schedule)
+        schedule_process.assert_called_once()
 
-        schedule_process.assert_not_called()
         schedule.refresh_from_db()
         assert schedule.is_active
         assert schedule.next_run_at is not None
 
+    def test__process_one_cron(self, mocker):
+        schedule_process = mocker.patch.object(Schedule, "process")
+
+        schedule = Schedule.objects.create(cron="* * * * *")
+
+        scheduler = Scheduler()
         scheduler._process_one(schedule)
         schedule_process.assert_called_once()
+
+        schedule.refresh_from_db()
+        assert schedule.is_active
+        assert schedule.next_run_at is not None

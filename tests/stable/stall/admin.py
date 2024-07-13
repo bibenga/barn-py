@@ -7,7 +7,7 @@ from .models import SomeSchedule, SomeTask
 
 @admin.register(SomeSchedule)
 class SomeScheduleAdmin(AbstractScheduleAdmin):
-    list_display = ("id", "max_attempts", "is_active", "cron", "next_run_at")
+    list_display = ("id", "max_attempts", "is_active", "next_run_at", "interval", "cron")
 
 
 @admin.register(SomeTask)

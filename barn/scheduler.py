@@ -84,47 +84,28 @@ class Scheduler:
     def _process_one(self, schedule: AbstractSchedule) -> None:
         log.info("found a schedule %s", schedule.pk)
 
-        if not schedule.next_run_at and not schedule.cron:
-            log.info("the schedule %s is an invalid", schedule.pk)
-            schedule.is_active = False
-            schedule.save(update_fields=["is_active"])
-            return
-
-        elif not schedule.next_run_at and schedule.cron:
-            try:
-                iter = croniter(schedule.cron, timezone.now())
-            except (TypeError, ValueError):
-                log.error("the schedule %s has an invalid cron", schedule.pk, exc_info=True)
-                schedule.is_active = False
-                schedule.save(update_fields=["is_active"])
-            else:
-                schedule.next_run_at = iter.get_next(datetime)
-                log.info("the schedule %s is scheduled to %s", schedule.pk, schedule.next_run_at)
-                schedule.save(update_fields=["next_run_at"])
-            # it will be called on next iteration if the next_run_at is near to now
-            return
-
         pre_schedule_execute.send(sender=self, schedule=schedule)
         schedule.process()
 
         now = timezone.now()
         schedule.last_run_at = now
-        if schedule.cron:
+        if schedule.interval:
+            schedule.next_run_at = now + schedule.interval
+            log.info("the schedule %s is scheduled to %s",
+                     schedule.pk, schedule.next_run_at)
+        elif schedule.cron:
             try:
                 iter = croniter(schedule.cron, schedule.next_run_at or now)
             except (TypeError, ValueError):
                 log.error("the scheduler %s has an invalid cron",
                           schedule.pk, exc_info=True)
                 schedule.is_active = False
-                # schedule.save(update_fields=["is_active", "last_run_at"])
             else:
                 schedule.next_run_at = iter.get_next(datetime)
                 log.info("the schedule %s is scheduled to %s",
                          schedule.pk, schedule.next_run_at)
-                # schedule.save(update_fields=["next_run_at", "last_run_at"])
         else:
             schedule.is_active = False
-            # schedule.save(update_fields=["is_active", "last_run_at"])
 
         post_schedule_execute.send(sender=self, schedule=schedule)
         schedule.save()

@@ -115,7 +115,7 @@ DATABASES = {
     }
     # "default": {
     #     "ENGINE": "django.db.backends.postgresql",
-    #     "NAME": "barn",
+    #     "NAME": "barn-py",
     #     "USER": "rds",
     #     "PASSWORD": "sqlsql",
     #     "HOST": "host.docker.internal",

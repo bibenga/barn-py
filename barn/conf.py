@@ -3,13 +3,7 @@ from django.conf import settings
 from django.utils.functional import classproperty
 
 
-class MetaConf(type):
-    # def USE_JITTER(cls) -> bool:
-    #     return getattr(settings, "BARN_WITH_JITTER", False)
-    pass
-
-
-class Conf(object, metaclass=MetaConf):
+class Conf:
     @classproperty
     def SCHEDULE_POLL_INTERVAL(cls) -> timedelta:
         return as_timedelta(getattr(settings, "BARN_SCHEDULE_POLL_INTERVAL", None),

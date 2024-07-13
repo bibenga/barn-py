@@ -24,7 +24,7 @@ except ImportError:
 
 
 class AbstractScheduleAdmin(admin.ModelAdmin):
-    list_display = ("id", "is_active", "cron", "next_run_at")
+    list_display = ("id", "is_active", "next_run_at", "interval", "cron")
     list_filter = ("is_active",)
     ordering = ("-next_run_at",)
     date_hierarchy = "next_run_at"
@@ -54,9 +54,10 @@ class AbstractTaskAdmin(admin.ModelAdmin):
 
 @admin.register(Schedule)
 class ScheduleAdmin(AbstractScheduleAdmin):
-    list_display = ("id", "name", "func", "is_active", "cron", "next_run_at")
+    list_display = ("id", "name", "func", "is_active", "next_run_at", "interval", "cron")
     search_fields = ("name", "func")
-    fields = ("name", "func", "args",  "is_active", "cron", "next_run_at", "last_run_at")
+    fields = ("name", "func", "args",  "is_active",
+              "next_run_at", "interval", "cron", "last_run_at")
     readonly_fields = ()
 
     if pretty_json_field is not None:

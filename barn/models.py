@@ -25,9 +25,10 @@ def validate_cron(value):
 
 class AbstractSchedule(models.Model):
     is_active = models.BooleanField(default=True)
+    next_run_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    interval = models.DurationField(null=True, blank=True)
     cron = models.CharField(max_length=200, null=True, blank=True, validators=[validate_cron],
                             help_text="Exactly 5 or 6 columns has to be specified for iterator expression")
-    next_run_at = models.DateTimeField(null=True, blank=True, db_index=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -37,13 +38,13 @@ class AbstractSchedule(models.Model):
         return f"schedule:{self.pk}"
 
     def clean(self) -> None:
-        if not self.cron and not self.next_run_at:
-            raise ValidationError("The cron and/or next_run_at is required")
+        if self.interval and self.cron:
+            raise ValidationError("The cron or interval are required")
         super().clean()
 
     def save(self, *args, **kwargs) -> None:
-        if not self.cron and not self.next_run_at:
-            raise ValidationError("The cron and/or next_run_at is required")
+        if self.interval and self.cron:
+            raise ValidationError("The cron or interval are required")
         super().save(*args, **kwargs)
 
     def process(self) -> None:
