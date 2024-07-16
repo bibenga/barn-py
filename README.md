@@ -5,7 +5,7 @@ Lightweight scheduler and worker for Django using a database as backend.
 The task worker and scheduler use the database as a queue to store and find tasks to process
 and you can forget about using `transaction.on_commit`.
 
-**If you need a billion messages per second, please leave.**
+**If you want a billion messages per second, get out of here.**
 
 ### Examples
 
