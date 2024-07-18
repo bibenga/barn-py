@@ -75,37 +75,41 @@ class PgBus:
     ) -> None:
         if Conf.BUS:
             if task_model:
-                post_save.connect(cls._on_model_save, sender=task_model)
+                post_save.connect(cls._on_task_post_save, sender=task_model)
             if schedule_model:
-                post_save.connect(cls._on_model_save, sender=schedule_model)
+                post_save.connect(cls._on_schedule_post_save, sender=schedule_model)
 
     @classmethod
-    def _on_model_save(cls, sender, **kwargs) -> None:
-        log.debug("the object is created or updated: %s", kwargs)
-        instance = kwargs["instance"]
-        created = kwargs["created"]
-        # ContentType.objects.get_for_model(instance).natural_key()
-        if isinstance(instance, AbstractTask):
-            if instance.status != TaskStatus.QUEUED:
-                log.debug("the task is not in QUEUED status")
-                return
-            if instance.run_at > timezone.now():
-                log.debug("the task is in the future")
-                return
-        elif isinstance(instance, AbstractSchedule):
-            if not instance.is_active:
-                log.debug("the schedule is not active")
-                return
-            if instance.next_run_at and instance.next_run_at > timezone.now():
-                log.debug("the schedule is in the future")
-                return
+    def _on_task_post_save(cls, sender, instance: AbstractTask, created: bool, **kwargs) -> None:
+        log.debug("the task %r is created or updated: %s", instance, created)
+        if instance.status != TaskStatus.QUEUED:
+            log.debug("the task %s is not in %s status", instance.pk, TaskStatus.QUEUED)
+            return
+        if instance.run_at > timezone.now():
+            log.debug("the task %s is in the future: %s", instance.pk, instance.run_at)
+            return
+        cls._enqueue_remote_post_save(instance, created)
+
+    @classmethod
+    def _on_schedule_post_save(cls, sender, instance: AbstractSchedule, created: bool, **kwargs) -> None:
+        log.debug("the schedule %r is created or updated: %s", instance.pk, created)
+        if not instance.is_active:
+            log.debug("the schedule %s is not active", instance)
+            return
+        if instance.next_run_at and instance.next_run_at > timezone.now():
+            log.debug("the schedule %r is in the future: %s", instance.pk, instance.next_run_at)
+            return
+        cls._enqueue_remote_post_save(instance, created)
+
+    @classmethod
+    def _enqueue_remote_post_save(cls, instance: AbstractTask | AbstractSchedule, created: bool) -> None:
         data = {
             "version": "1.0.0",
             "model": f"{instance._meta.app_label}.{instance._meta.model_name}",
             "pk": instance.pk,
             "event": "create" if created else "update",
         }
-        payload = json.dumps(data)
-        log.info("_on_model_save: %s", payload)
+        payload = json.dumps(data, ensure_ascii=False)
+        log.info("a message is sent in the %s channel: %s", Conf.BUS_CHANNEL, payload)
         with connection.cursor() as cursor:
             cursor.execute("select pg_notify(%s, %s)", [Conf.BUS_CHANNEL, payload])
