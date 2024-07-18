@@ -5,6 +5,14 @@ from django.utils.functional import classproperty
 
 class Conf:
     @classproperty
+    def BUS(cls) -> bool:
+        return getattr(settings, "BARN_BUS", False)
+
+    @classproperty
+    def BUS_CHANNEL(cls) -> str:
+        return getattr(settings, "BARN_BUS_CHANNEL", "barn")
+
+    @classproperty
     def SCHEDULE_POLL_INTERVAL(cls) -> timedelta:
         return as_timedelta(getattr(settings, "BARN_SCHEDULE_POLL_INTERVAL", None),
                             timedelta(seconds=60))

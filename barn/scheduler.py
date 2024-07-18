@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from .conf import Conf
 from .models import AbstractSchedule, Schedule
-from .signals import post_schedule_execute, pre_schedule_execute
+from .signals import post_schedule_execute, pre_schedule_execute, remote_post_save
 
 log = logging.getLogger(__name__)
 
@@ -34,17 +34,27 @@ class Scheduler:
         self._model = model or Schedule
         self._interval: float = Conf.SCHEDULE_POLL_INTERVAL.total_seconds()
         self._ttl: timedelta | None = Conf.SCHEDULE_FINISHED_TTL
+
         self._stop_event = asyncio.Event()
+        self._wakeup_event = asyncio.Event()
         self._thread: asyncio.Task | None = None
 
     async def start(self) -> None:
         self._stop_event.clear()
         self._thread = asyncio.create_task(self._run(), name="scheduler")
+        remote_post_save.connect(self._on_remote_post_save)
 
     async def stop(self) -> None:
         if self._thread and not self._stop_event.is_set():
             self._stop_event.set()
             await self._thread
+        remote_post_save.disconnect(self._on_remote_post_save)
+
+    async def _on_remote_post_save(self, sender, **kwargs):
+        log.info("_on_remote_post_save: %s", kwargs)
+        model = kwargs["model"]
+        if self._model == model or issubclass(self._model, model):
+            self._wakeup_event.set()
 
     async def run(self) -> None:
         await self._run()
@@ -64,8 +74,21 @@ class Scheduler:
         jitter = self._interval / 10
         timeout = self._interval + (jitter * random() - jitter / 2)
         log.debug("sleep for %.2fs", timeout)
+
+        self._wakeup_event.clear()
+        _stop_event_wait = asyncio.ensure_future(self._stop_event.wait())
+        _wakeup_event_wait = asyncio.ensure_future(self._wakeup_event.wait())
         with suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(self._stop_event.wait(), 5)
+            done, pending = await asyncio.wait_for(
+                asyncio.wait(
+                    [_stop_event_wait, _wakeup_event_wait],
+                    return_when=asyncio.FIRST_COMPLETED
+                ),
+                5
+            )
+            log.info("done=%r, pending=%r", done, pending)
+        _stop_event_wait.cancel()
+        _wakeup_event_wait.cancel()
 
     @sync_to_async
     @transaction.atomic

@@ -11,6 +11,8 @@ from django.core.management.base import BaseCommand
 from django.db import models
 from django.utils import autoreload
 
+from ...bus import PgBus
+from ...conf import Conf
 from ...models import AbstractSchedule, AbstractTask
 from ...scheduler import Scheduler
 from ...worker import Worker
@@ -25,6 +27,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "-r",
             "--with-autoreload",
             dest="use_reloader",
             action="store_true",
@@ -65,13 +68,18 @@ class Command(BaseCommand):
             action="store_true",
         )
 
+        parser.add_argument(
+            "-b",
+            "--bus",
+            dest="bus",
+            action="store_true",
+        )
+
     def handle(self, *args, **options):
-        # log.info("handle: %r", options)
-        # return
         use_reloader = options["use_reloader"]
         main = partial(asyncio.run, self._run(**options))
         if use_reloader:
-            log.warning("the reloader will be used")
+            log.debug("the reloader will be used")
             # autoreload.run_with_reloader(self._run, **options)
             autoreload.run_with_reloader(main)
         else:
@@ -82,6 +90,7 @@ class Command(BaseCommand):
         use_signals = not options["use_reloader"]
         with_scheduler = options["scheduler"]
         with_worker = options["worker"]
+        with_bus = options["bus"]
         scheduler_model = options["scheduler_model"]
         task_model = options["task_model"]
 
@@ -91,7 +100,7 @@ class Command(BaseCommand):
         log.info("run with params: scheduler=%s, scheduler_model=%s, worker=%s, task_model=%s",
                  with_scheduler, scheduler_model, with_worker, task_model)
 
-        if not with_scheduler and not with_worker:
+        if not with_scheduler and not with_worker and not with_bus:
             log.warning("nothing to run")
             return
 
@@ -100,6 +109,11 @@ class Command(BaseCommand):
         if use_signals:
             for sig in [signal.SIGTERM, signal.SIGINT]:
                 asyncio.get_event_loop().add_signal_handler(sig, partial(self._sig_handler, sig))
+
+        self._bus: PgBus | None = None
+        if Conf.BUS or with_bus:
+            self._bus = PgBus()
+            self._bus.start()
 
         self._scheduler: Scheduler | None = None
         if with_scheduler:
@@ -125,6 +139,9 @@ class Command(BaseCommand):
         if self._scheduler:
             await self._scheduler.stop()
 
+        if self._bus:
+            self._bus.stop()
+
         log.info("stop")
 
     def _sig_handler(self, signum) -> None:
@@ -133,8 +150,8 @@ class Command(BaseCommand):
 
     @sync_to_async
     def _get_model(self, name: str) -> Type[models.Model]:
-        app,_, model = name.partition('.')
-        clazz =  ContentType.objects.get_by_natural_key(app, model).model_class()
+        app, _, model = name.partition('.')
+        clazz = ContentType.objects.get_by_natural_key(app, model).model_class()
         if clazz is None:
             raise ValueError(name)
         return clazz

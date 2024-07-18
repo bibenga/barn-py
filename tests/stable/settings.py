@@ -100,30 +100,30 @@ WSGI_APPLICATION = "tests.stable.wsgi.application"
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-        "CONN_MAX_AGE": 60,
-        "CONN_HEALTH_CHECKS": True,
-        "TIME_ZONE": "UTC",
-        "OPTIONS": {
-            "timeout": 600,
-            # django 5.1
-            # "init_command": "PRAGMA journal_mode = WAL; PRAGMA cache = shared; PRAGMA mode = rwc;"
-            # "transaction_mode": "IMMEDIATE",
-        }
-    }
     # "default": {
-    #     "ENGINE": "django.db.backends.postgresql",
-    #     "NAME": "barn-py",
-    #     "USER": "rds",
-    #     "PASSWORD": "sqlsql",
-    #     "HOST": "host.docker.internal",
-    #     "PORT": "5432",
+    #     "ENGINE": "django.db.backends.sqlite3",
+    #     "NAME": BASE_DIR / "db.sqlite3",
     #     "CONN_MAX_AGE": 60,
     #     "CONN_HEALTH_CHECKS": True,
-    #     "TIME_ZONE": "UTC"
+    #     "TIME_ZONE": "UTC",
+    #     "OPTIONS": {
+    #         "timeout": 600,
+    #         # django 5.1
+    #         # "init_command": "PRAGMA journal_mode = WAL; PRAGMA cache = shared; PRAGMA mode = rwc;"
+    #         # "transaction_mode": "IMMEDIATE",
+    #     }
     # }
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "barn-py",
+        "USER": "rds",
+        "PASSWORD": "sqlsql",
+        "HOST": "host.docker.internal",
+        "PORT": "5432",
+        "CONN_MAX_AGE": 60,
+        "CONN_HEALTH_CHECKS": True,
+        "TIME_ZONE": "UTC"
+    }
 }
 
 
@@ -160,5 +160,6 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 
 # BARN
 # BARN_TASK_SYNC = True
+BARN_BUS = DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql"
 BARN_SCHEDULE_POLL_INTERVAL = 5
 BARN_TASL_POLL_INTERVAL = 5
