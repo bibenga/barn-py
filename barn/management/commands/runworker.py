@@ -127,7 +127,10 @@ class Command(BaseCommand):
 
         while not self._stop_event.is_set():
             if not self._stop_event.wait(5):
-                log.debug("I am alive")
+                if self.is_alive():
+                    log.debug("I am alive")
+                else:
+                    break
 
         for worker in self._workers:
             worker.stop()
@@ -150,3 +153,17 @@ class Command(BaseCommand):
         if clazz is None:
             raise ValueError(name)
         return clazz
+
+    def is_alive(self) -> bool:
+        if self._bus and not self._bus.is_alive():
+            log.error("the og_bus is died")
+            return False
+        if self._scheduler and not self._scheduler.is_alive():
+            log.error("the scheduler is died")
+            return False
+        if self._workers:
+            for worker in self._workers:
+                if not worker.is_alive():
+                    log.error("the worker %r is died", worker.name)
+                    return False
+        return True

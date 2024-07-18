@@ -37,6 +37,10 @@ class Worker:
         self._wakeup_event = threading.Event()
         self._thread: threading.Thread | None = None
 
+    @property
+    def name(self) -> str:
+        return self._name
+
     def start(self) -> None:
         self._stop_event.clear()
         self._wakeup_event.clear()
@@ -50,6 +54,9 @@ class Worker:
             self._stop_event.set()
             self._wakeup_event.set()
             self._thread.join(5)
+
+    def is_alive(self) -> bool:
+        return self._thread and self._thread.is_alive()
 
     def _on_remote_post_save(self, sender, **kwargs):
         log.debug("_on_remote_post_save: %s", kwargs)
@@ -75,8 +82,8 @@ class Worker:
         jitter = self._interval / 10
         timeout = self._interval + (jitter * random() - jitter / 2)
         log.debug("sleep for %.2fs", timeout)
-        self._wakeup_event.clear()
         self._wakeup_event.wait(timeout)
+        self._wakeup_event.clear()
 
     def _process(self) -> None:
         while not self._stop_event.is_set():
