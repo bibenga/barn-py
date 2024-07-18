@@ -79,14 +79,13 @@ class Scheduler:
         _stop_event_wait = asyncio.ensure_future(self._stop_event.wait())
         _wakeup_event_wait = asyncio.ensure_future(self._wakeup_event.wait())
         with suppress(asyncio.TimeoutError):
-            done, pending = await asyncio.wait_for(
+            await asyncio.wait_for(
                 asyncio.wait(
                     [_stop_event_wait, _wakeup_event_wait],
                     return_when=asyncio.FIRST_COMPLETED
                 ),
-                5
+                timeout=5,
             )
-            log.info("done=%r, pending=%r", done, pending)
         _stop_event_wait.cancel()
         _wakeup_event_wait.cancel()
 

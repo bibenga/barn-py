@@ -28,10 +28,12 @@ class Worker:
     def __init__(
         self,
         model: Type[AbstractTask] | None = None,
+        name: str | None = None,
     ) -> None:
         self._model = model or Task
         self._interval: float = Conf.TASL_POLL_INTERVAL.total_seconds()
         self._ttl: timedelta | None = Conf.TASK_FINISHED_TTL
+        self._name = name or "worker"
 
         self._stop_event = asyncio.Event()
         self._wakeup_event = asyncio.Event()
@@ -40,7 +42,7 @@ class Worker:
     async def start(self) -> None:
         self._stop_event.clear()
         self._wakeup_event.clear()
-        self._thread = asyncio.create_task(self._run(), name="worker")
+        self._thread = asyncio.create_task(self._run(), name=self._name)
         remote_post_save.connect(self._on_remote_post_save)
 
     async def stop(self) -> None:
@@ -60,7 +62,7 @@ class Worker:
         await self._run()
 
     async def _run(self) -> None:
-        log.info("stated")
+        log.info("%s stated", self._name)
         try:
             while not self._stop_event.is_set():
                 await self._process()
@@ -70,7 +72,7 @@ class Worker:
         # except asyncio.CancelledError:
         #     log.info("canceled", exc_info=True)
         finally:
-            log.info("finished")
+            log.info("%s finished", self._name)
 
     async def _sleep(self) -> None:
         jitter = self._interval / 10
@@ -81,14 +83,13 @@ class Worker:
         _stop_event_wait = asyncio.ensure_future(self._stop_event.wait())
         _wakeup_event_wait = asyncio.ensure_future(self._wakeup_event.wait())
         with suppress(asyncio.TimeoutError):
-            done, pending = await asyncio.wait_for(
+            await asyncio.wait_for(
                 asyncio.wait(
                     [_stop_event_wait, _wakeup_event_wait],
                     return_when=asyncio.FIRST_COMPLETED
                 ),
-                5
+                timeout=5,
             )
-            log.info("done=%r, pending=%r", done, pending)
         _stop_event_wait.cancel()
         _wakeup_event_wait.cancel()
 

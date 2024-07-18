@@ -51,7 +51,8 @@ class Command(BaseCommand):
             "-w",
             "--worker",
             dest="worker",
-            action="store_true",
+            default=1,
+            type=int
         )
 
         parser.add_argument(
@@ -89,7 +90,7 @@ class Command(BaseCommand):
     async def _run(self, **options):
         use_signals = not options["use_reloader"]
         with_scheduler = options["scheduler"]
-        with_worker = options["worker"]
+        worker_count = options["worker"]
         with_bus = options["bus"]
         scheduler_model = options["scheduler_model"]
         task_model = options["task_model"]
@@ -98,9 +99,9 @@ class Command(BaseCommand):
         task_model: Type[AbstractTask] = await self._get_model(task_model)
 
         log.info("run with params: scheduler=%s, scheduler_model=%s, worker=%s, task_model=%s",
-                 with_scheduler, scheduler_model, with_worker, task_model)
+                 with_scheduler, scheduler_model, worker_count, task_model)
 
-        if not with_scheduler and not with_worker and not with_bus:
+        if not with_scheduler and not worker_count and not with_bus:
             log.warning("nothing to run")
             return
 
@@ -121,11 +122,13 @@ class Command(BaseCommand):
             await self._scheduler.start()
             await asyncio.sleep(1)
 
-        self._worker: Worker | None = None
-        if with_worker:
-            self._worker = Worker(task_model)
-            await self._worker.start()
-            await asyncio.sleep(1)
+        self._workers: list[Worker] = []
+        if worker_count > 0:
+            for i in range(worker_count):
+                worker = Worker(task_model, name=f"worker-{i}")
+                self._workers.append(worker)
+                await worker.start()
+                await asyncio.sleep(1)
 
         # await self._stop_event.wait()
         while not self._stop_event.is_set():
@@ -133,8 +136,8 @@ class Command(BaseCommand):
                 await asyncio.wait_for(self._stop_event.wait(), 5)
                 log.debug("I am alive")
 
-        if self._worker:
-            await self._worker.stop()
+        for worker in self._workers:
+            await worker.stop()
 
         if self._scheduler:
             await self._scheduler.stop()

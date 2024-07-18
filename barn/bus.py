@@ -24,7 +24,7 @@ class PgBus:
 
     def start(self) -> None:
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, name="worker")
+        self._thread = threading.Thread(target=self._run, name="PgBus")
         self._thread.start()
 
     def stop(self) -> None:
