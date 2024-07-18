@@ -6,23 +6,23 @@ from barn.worker import Worker
 
 @pytest.mark.django_db(transaction=True)
 class TestWorker:
-    async def test__process(self, mocker):
+    def test__process(self, mocker):
         _process_next = mocker.patch.object(Worker, "_process_next", side_effect=[True, False])
 
         worker = Worker()
-        await worker._process()
+        worker._process()
 
         assert _process_next.call_count == 2
 
-    async def test__process_next(self, mocker):
+    def test__process_next(self, mocker):
         _process_one = mocker.patch.object(Worker, "_process_one")
 
         worker = Worker()
-        await worker._process_next()
+        worker._process_next()
         _process_one.assert_not_called()
 
-        await Task.objects.acreate(func="func")
-        await worker._process_next()
+        Task.objects.create(func="func")
+        worker._process_next()
         _process_one.assert_called_once()
 
     def test__process_one(self, mocker):

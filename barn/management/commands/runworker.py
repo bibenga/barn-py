@@ -1,11 +1,9 @@
-import asyncio
 import logging
 import signal
-from contextlib import suppress
-from functools import partial
+import threading
+import time
 from typing import Type
 
-from asgiref.sync import sync_to_async
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand
 from django.db import models
@@ -78,16 +76,13 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         use_reloader = options["use_reloader"]
-        main = partial(asyncio.run, self._run(**options))
         if use_reloader:
             log.debug("the reloader will be used")
-            # autoreload.run_with_reloader(self._run, **options)
-            autoreload.run_with_reloader(main)
+            autoreload.run_with_reloader(self._run, **options)
         else:
-            # self._run(**options)
-            main()
+            self._run(**options)
 
-    async def _run(self, **options):
+    def _run(self, **options):
         use_signals = not options["use_reloader"]
         with_scheduler = options["scheduler"]
         worker_count = options["worker"]
@@ -95,8 +90,8 @@ class Command(BaseCommand):
         scheduler_model = options["scheduler_model"]
         task_model = options["task_model"]
 
-        scheduler_model: Type[AbstractSchedule] = await self._get_model(scheduler_model)
-        task_model: Type[AbstractTask] = await self._get_model(task_model)
+        scheduler_model: Type[AbstractSchedule] = self._get_model(scheduler_model)
+        task_model: Type[AbstractTask] = self._get_model(task_model)
 
         log.info("run with params: scheduler=%s, scheduler_model=%s, worker=%s, task_model=%s",
                  with_scheduler, scheduler_model, worker_count, task_model)
@@ -106,10 +101,10 @@ class Command(BaseCommand):
             return
 
         log.info("start")
-        self._stop_event = asyncio.Event()
+        self._stop_event = threading.Event()
         if use_signals:
             for sig in [signal.SIGTERM, signal.SIGINT]:
-                asyncio.get_event_loop().add_signal_handler(sig, partial(self._sig_handler, sig))
+                signal.signal(sig, self._sig_handler)
 
         self._bus: PgBus | None = None
         if Conf.BUS or with_bus:
@@ -119,39 +114,36 @@ class Command(BaseCommand):
         self._scheduler: Scheduler | None = None
         if with_scheduler:
             self._scheduler = Scheduler(scheduler_model)
-            await self._scheduler.start()
-            await asyncio.sleep(1)
+            self._scheduler.start()
+            time.sleep(1)
 
         self._workers: list[Worker] = []
         if worker_count > 0:
             for i in range(worker_count):
                 worker = Worker(task_model, name=f"worker-{i}")
                 self._workers.append(worker)
-                await worker.start()
-                await asyncio.sleep(1)
+                worker.start()
+                time.sleep(1)
 
-        # await self._stop_event.wait()
         while not self._stop_event.is_set():
-            with suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(self._stop_event.wait(), 5)
+            if not self._stop_event.wait(5):
                 log.debug("I am alive")
 
         for worker in self._workers:
-            await worker.stop()
+            worker.stop()
 
         if self._scheduler:
-            await self._scheduler.stop()
+            self._scheduler.stop()
 
         if self._bus:
             self._bus.stop()
 
         log.info("stop")
 
-    def _sig_handler(self, signum) -> None:
+    def _sig_handler(self, signum, frame) -> None:
         log.info("got signal - %s", signal.strsignal(signum))
         self._stop_event.set()
 
-    @sync_to_async
     def _get_model(self, name: str) -> Type[models.Model]:
         app, _, model = name.partition('.')
         clazz = ContentType.objects.get_by_natural_key(app, model).model_class()

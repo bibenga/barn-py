@@ -18,7 +18,7 @@ LOGGING = {
     "formatters": {
         "default": {
             # "format": "{asctime} [{levelname:5}] [{process:d}:{thread:d}] {name} - {message}",
-            "format": "{asctime} [{levelname:5}] {name} - {message}",
+            "format": "{asctime} [{levelname:5}] {threadName} {name} - {message}",
             "style": "{",
         },
     },

@@ -1,11 +1,9 @@
-import asyncio
 import logging
-from contextlib import suppress
+import threading
 from datetime import datetime, timedelta
 from random import random
 from typing import Type
 
-from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -35,61 +33,51 @@ class Scheduler:
         self._interval: float = Conf.SCHEDULE_POLL_INTERVAL.total_seconds()
         self._ttl: timedelta | None = Conf.SCHEDULE_FINISHED_TTL
 
-        self._stop_event = asyncio.Event()
-        self._wakeup_event = asyncio.Event()
-        self._thread: asyncio.Task | None = None
+        self._stop_event = threading.Event()
+        self._wakeup_event = threading.Event()
+        self._thread: threading.Thread | None = None
 
-    async def start(self) -> None:
+    def start(self) -> None:
         self._stop_event.clear()
-        self._thread = asyncio.create_task(self._run(), name="scheduler")
+        self._wakeup_event.clear()
+        self._thread = threading.Thread(target=self._run, name="scheduler")
+        self._thread.start()
         remote_post_save.connect(self._on_remote_post_save)
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
+        remote_post_save.disconnect(self._on_remote_post_save)
         if self._thread and not self._stop_event.is_set():
             self._stop_event.set()
-            await self._thread
-        remote_post_save.disconnect(self._on_remote_post_save)
+            self._wakeup_event.set()
+            self._thread.join(5)
 
-    async def _on_remote_post_save(self, sender, **kwargs):
+    def _on_remote_post_save(self, sender, **kwargs):
         log.info("_on_remote_post_save: %s", kwargs)
         model = kwargs["model"]
         if self._model == model or issubclass(self._model, model):
             self._wakeup_event.set()
 
-    async def run(self) -> None:
-        await self._run()
+    def run(self) -> None:
+        self._run()
 
-    async def _run(self) -> None:
+    def _run(self) -> None:
         log.info("stated")
         try:
             while not self._stop_event.is_set():
-                await self._process()
+                self._process()
                 if self._ttl:
-                    await self._delete_old()
-                await self._sleep()
+                    self._delete_old()
+                self._sleep()
         finally:
             log.info("finished")
 
-    async def _sleep(self) -> None:
+    def _sleep(self) -> None:
         jitter = self._interval / 10
         timeout = self._interval + (jitter * random() - jitter / 2)
         log.debug("sleep for %.2fs", timeout)
-
         self._wakeup_event.clear()
-        _stop_event_wait = asyncio.ensure_future(self._stop_event.wait())
-        _wakeup_event_wait = asyncio.ensure_future(self._wakeup_event.wait())
-        with suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(
-                asyncio.wait(
-                    [_stop_event_wait, _wakeup_event_wait],
-                    return_when=asyncio.FIRST_COMPLETED
-                ),
-                timeout=5,
-            )
-        _stop_event_wait.cancel()
-        _wakeup_event_wait.cancel()
+        self._wakeup_event.wait(timeout)
 
-    @sync_to_async
     @transaction.atomic
     def _process(self) -> None:
         schedule_qs = self._model.objects.filter(
@@ -132,7 +120,6 @@ class Scheduler:
         post_schedule_execute.send(sender=self, schedule=schedule)
         schedule.save()
 
-    @sync_to_async
     @transaction.atomic
     def _delete_old(self) -> None:
         moment = timezone.now() - self._ttl
