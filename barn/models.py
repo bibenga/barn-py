@@ -25,7 +25,7 @@ def validate_cron(value):
 
 class AbstractSchedule(models.Model):
     is_active = models.BooleanField(default=True)
-    next_run_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    next_run_at = models.DateTimeField(null=True, blank=True)
     interval = models.DurationField(null=True, blank=True)
     cron = models.CharField(max_length=200, null=True, blank=True, validators=[validate_cron],
                             help_text="Exactly 5 or 6 columns has to be specified for iterator expression")
@@ -58,7 +58,7 @@ class TaskStatus(models.TextChoices):
 
 
 class AbstractTask(models.Model):
-    run_at = models.DateTimeField(db_index=True, blank=True)
+    run_at = models.DateTimeField(blank=True)
     status = models.CharField(max_length=1, choices=TaskStatus.choices, default=TaskStatus.QUEUED)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)

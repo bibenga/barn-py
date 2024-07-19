@@ -28,8 +28,8 @@ LOGGING = {
     "loggers": {
         # "django.db": {"level": "DEBUG"}
         "barn": {"level": "DEBUG"},
-        # "barn.worker": {"level": "ERROR"},
-        # "barn.bus": {"level": "ERROR"},
+        "barn.worker": {"level": "ERROR"},
+        "barn.bus": {"level": "ERROR"},
     },
     "root": {
         "level": "INFO",
