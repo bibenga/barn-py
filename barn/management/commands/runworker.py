@@ -2,6 +2,7 @@ import logging
 import signal
 import threading
 import time
+from collections import Counter
 from typing import Type
 
 from django.contrib.contenttypes.models import ContentType
@@ -13,6 +14,7 @@ from ...bus import PgBus
 from ...conf import Conf
 from ...models import AbstractSchedule, AbstractTask
 from ...scheduler import Scheduler
+from ...signals import post_schedule_execute, post_task_execute
 from ...worker import Worker
 
 log = logging.getLogger(__name__)
@@ -100,6 +102,8 @@ class Command(BaseCommand):
             log.warning("nothing to run")
             return
 
+        self._stats = Counter()
+
         log.info("start")
         self._stop_event = threading.Event()
         if use_signals:
@@ -113,12 +117,14 @@ class Command(BaseCommand):
 
         self._scheduler: Scheduler | None = None
         if with_scheduler:
+            post_schedule_execute.connect(self._on_schedule_executed)
             self._scheduler = Scheduler(scheduler_model)
             self._scheduler.start()
             time.sleep(1)
 
         self._workers: list[Worker] = []
         if worker_count > 0:
+            post_task_execute.connect(self._on_task_executed)
             for i in range(worker_count):
                 worker = Worker(task_model, name=f"worker-{i}")
                 self._workers.append(worker)
@@ -128,7 +134,7 @@ class Command(BaseCommand):
         while not self._stop_event.is_set():
             if not self._stop_event.wait(5):
                 if self.is_alive():
-                    log.debug("I am alive")
+                    log.debug("I am alive: %s", self._stats)
                 else:
                     break
 
@@ -167,3 +173,11 @@ class Command(BaseCommand):
                     log.error("the worker %r is died", worker.name)
                     return False
         return True
+
+    def _on_schedule_executed(self, sender, schedule: AbstractSchedule, **kwargs) -> None:
+        model = f"{schedule._meta.app_label}.{schedule._meta.model_name}"
+        self._stats[model] += 1
+
+    def _on_task_executed(self, sender, task: AbstractTask, **kwargs) -> None:
+        model = f"{task._meta.app_label}.{task._meta.model_name}"
+        self._stats[model] += 1

@@ -99,8 +99,12 @@ class Scheduler:
         ).order_by("next_run_at", "id")
         cnt = 0
         for schedule in schedule_qs.select_for_update(skip_locked=True):
-            self._process_one(schedule)
-            cnt += 1
+            while True:
+                cnt += 1
+                self._process_one(schedule)
+                if schedule.is_active and schedule.next_run_at and schedule.next_run_at < timezone.now():
+                    continue
+                break
         if cnt == 0:
             log.debug("no pending schedules")
         else:
