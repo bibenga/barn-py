@@ -121,7 +121,7 @@ class Command(BaseCommand):
             post_schedule_execute.connect(self._on_schedule_executed)
             self._scheduler = Scheduler(scheduler_model)
             self._scheduler.start()
-            time.sleep(1)
+            time.sleep(0.2)
 
         self._workers: list[Worker] = []
         if worker_count > 0:
@@ -130,7 +130,7 @@ class Command(BaseCommand):
                 worker = Worker(task_model, name=f"worker-{i}")
                 self._workers.append(worker)
                 worker.start()
-                time.sleep(1)
+                time.sleep(0.2)
 
         with self._stats_lock:
             prev_stats = self._stats.copy()
@@ -139,7 +139,6 @@ class Command(BaseCommand):
         while not self._stop_event.is_set():
             if not self._stop_event.wait(timeout):
                 if self.is_alive():
-                    # log.debug("I am alive")
                     with self._stats_lock:
                         stats = self._stats.copy()
                     rps: dict[str, float] = {
