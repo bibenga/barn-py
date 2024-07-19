@@ -70,10 +70,6 @@ class AbstractTask(models.Model):
     def __str__(self) -> str:
         return f"task:{self.pk}"
 
-    # def clean(self) -> None:
-    #     self.run_at = self.run_at or timezone.now()
-    #     return super().clean()
-
     def save(self, *args, **kwargs) -> None:
         self.run_at = self.run_at or timezone.now()
         super().save(*args, **kwargs)
@@ -90,9 +86,6 @@ class Schedule(AbstractSchedule):
     def __str__(self) -> str:
         return f"{self.name}"
 
-    # def clean(self) -> None:
-    #     self.name = self.name or self.func
-
     def save(self, *args, **kwargs) -> None:
         self.name = self.name or self.func
         super().save(*args, **kwargs)
@@ -106,6 +99,12 @@ class Task(AbstractTask):
     func = models.CharField(max_length=1000)
     args = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
+
+    class Meta(AbstractTask.Meta):
+        indexes = [
+            # models.Index(fields=("run_at",)),
+            models.Index(fields=("status", "run_at")),
+        ]
 
     def __str__(self) -> str:
         return f"{self.func}"
