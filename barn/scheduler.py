@@ -59,10 +59,10 @@ class Scheduler:
         self._wakeup_event.set()
 
     def is_alive(self) -> bool:
-        return self._thread and self._thread.is_alive()
+        return bool(self._thread and self._thread.is_alive())
 
     def _on_remote_post_save(self, sender, **kwargs):
-        log.info("_on_remote_post_save: %s", kwargs)
+        log.debug("somwhere something was saved: %s", kwargs)
         model = kwargs["model"]
         if self._model == model or issubclass(self._model, model):
             self._wakeup_event.set()
@@ -104,8 +104,7 @@ class Scheduler:
         if cnt == 0:
             log.debug("no pending schedules")
         else:
-            log.debug("processed %d schedules", cnt)
-
+            log.info("processed %d schedules", cnt)
 
     def _process_one(self, schedule: AbstractSchedule) -> None:
         log.info("found a schedule %s", schedule.pk)
@@ -117,19 +116,16 @@ class Scheduler:
         schedule.last_run_at = now
         if schedule.interval:
             schedule.next_run_at = now + schedule.interval
-            log.info("the schedule %s is scheduled to %s",
-                     schedule.pk, schedule.next_run_at)
+            log.info("the schedule %s is scheduled to %s", schedule.pk, schedule.next_run_at)
         elif schedule.cron:
             try:
                 iter = croniter(schedule.cron, schedule.next_run_at or now)
             except (TypeError, ValueError):
-                log.error("the scheduler %s has an invalid cron",
-                          schedule.pk, exc_info=True)
+                log.error("the scheduler %s has an invalid cron", schedule.pk, exc_info=True)
                 schedule.is_active = False
             else:
                 schedule.next_run_at = iter.get_next(datetime)
-                log.info("the schedule %s is scheduled to %s",
-                         schedule.pk, schedule.next_run_at)
+                log.info("the schedule %s is scheduled to %s", schedule.pk, schedule.next_run_at)
         else:
             schedule.is_active = False
 

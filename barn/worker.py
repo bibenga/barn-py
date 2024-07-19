@@ -59,10 +59,10 @@ class Worker:
         self._wakeup_event.set()
 
     def is_alive(self) -> bool:
-        return self._thread and self._thread.is_alive()
+        return bool(self._thread and self._thread.is_alive())
 
     def _on_remote_post_save(self, sender, **kwargs):
-        log.debug("_on_remote_post_save: %s", kwargs)
+        log.debug("somwhere something was saved: %s", kwargs)
         model = kwargs["model"]
         if self._model == model or issubclass(self._model, model):
             self._wakeup_event.set()
@@ -101,7 +101,7 @@ class Worker:
         if cnt == 0:
             log.debug("no pending tasks")
         else:
-            log.debug("processed %d tasks", cnt)
+            log.info("processed %d tasks", cnt)
 
     @transaction.atomic
     def _process_next(self) -> bool:
@@ -138,8 +138,8 @@ class Worker:
 
             post_task_execute.send(sender=self, task=task, exc=None)
             task.save()
-            log.info("the task %s is processed with success in %s", task.pk,
-                     task.finished_at - task.started_at)
+            log.info("the task %s is processed with success in %s",
+                     task.pk, task.finished_at - task.started_at)
 
         except Exception as exc:
             task.status = TaskStatus.FAILED
@@ -148,8 +148,8 @@ class Worker:
 
             post_task_execute.send(sender=self, task=task, exc=exc)
             task.save()
-            log.info("the task %s is processed with error in %s", task.pk,
-                     task.finished_at - task.started_at, exc_info=True)
+            log.info("the task %s is processed with error in %s",
+                     task.pk, task.finished_at - task.started_at, exc_info=True)
 
         finally:
             del _current_task.value
