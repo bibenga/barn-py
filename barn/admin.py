@@ -33,6 +33,7 @@ class AbstractScheduleAdmin(admin.ModelAdmin):
 class AbstractTaskAdmin(admin.ModelAdmin):
     list_display = ("id", "run_at", "colored_status")
     list_filter = ("status",)
+    date_hierarchy = "run_at"
     ordering = ("-run_at",)
     date_hierarchy = "run_at"
 
@@ -74,7 +75,6 @@ class ScheduleAdmin(AbstractScheduleAdmin):
 class TaskAdmin(AbstractTaskAdmin):
     list_display = ("id", "func", "run_at", "colored_status")
     search_fields = ("func",)
-    date_hierarchy = "run_at"
     fields = ("func", "args", "run_at", "status", "started_at",
               "finished_at", "result", "error")
     readonly_fields = ()
