@@ -9,3 +9,6 @@ post_schedule_execute = Signal()
 pre_task_execute = Signal()
 # task, exc
 post_task_execute = Signal()
+
+# model, pk, event
+remote_post_save = Signal()

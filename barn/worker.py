@@ -1,19 +1,17 @@
-import asyncio
 import logging
+import threading
 import traceback
-from contextlib import suppress
 from datetime import timedelta
 from random import random
 from typing import Type
 
 import asgiref.local
-from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.utils import timezone
 
 from .conf import Conf
 from .models import AbstractTask, Task, TaskStatus
-from .signals import post_task_execute, pre_task_execute
+from .signals import post_task_execute, pre_task_execute, remote_post_save
 
 log = logging.getLogger(__name__)
 
@@ -28,54 +26,83 @@ class Worker:
     def __init__(
         self,
         model: Type[AbstractTask] | None = None,
+        name: str | None = None,
     ) -> None:
         self._model = model or Task
         self._interval: float = Conf.TASL_POLL_INTERVAL.total_seconds()
         self._ttl: timedelta | None = Conf.TASK_FINISHED_TTL
+        self._name = name or "worker"
 
-        self._stop_event = asyncio.Event()
-        self._thread: asyncio.Task | None = None
+        self._stop_event = threading.Event()
+        self._wakeup_event = threading.Event()
+        self._thread: threading.Thread | None = None
 
-    async def start(self) -> None:
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def start(self) -> None:
         self._stop_event.clear()
-        self._thread = asyncio.create_task(self._run(), name="worker")
+        self._wakeup_event.clear()
+        self._thread = threading.Thread(target=self.run, name=self._name)
+        self._thread.start()
+        remote_post_save.connect(self._on_remote_post_save)
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
+        remote_post_save.disconnect(self._on_remote_post_save)
         if self._thread and not self._stop_event.is_set():
             self._stop_event.set()
-            # self._thread.cancel()
-            await self._thread
+            self._wakeup_event.set()
+            self._thread.join(5)
 
-    async def run(self) -> None:
-        await self._run()
+    def wakeup(self) -> None:
+        self._wakeup_event.set()
 
-    async def _run(self) -> None:
+    def is_alive(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
+    def _on_remote_post_save(self, sender, **kwargs):
+        log.debug("somwhere something was saved: %s", kwargs)
+        model = kwargs["model"]
+        if self._model == model or issubclass(self._model, model):
+            self._wakeup_event.set()
+
+    def run(self) -> None:
         log.info("stated")
         try:
-            while not self._stop_event.is_set():
-                await self._process()
-                if self._ttl:
-                    await self._delete_old()
-                await self._sleep()
-        # except asyncio.CancelledError:
-        #     log.info("canceled", exc_info=True)
+            self._run()
+        except:
+            log.fatal("failed")
+            raise
         finally:
             log.info("finished")
 
-    async def _sleep(self) -> None:
+    def _run(self) -> None:
+        while not self._stop_event.is_set():
+            self._process()
+            if self._ttl:
+                self._delete_old()
+            self._sleep()
+
+    def _sleep(self) -> None:
         jitter = self._interval / 10
         timeout = self._interval + (jitter * random() - jitter / 2)
         log.debug("sleep for %.2fs", timeout)
-        with suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(self._stop_event.wait(), 5)
+        self._wakeup_event.wait(timeout)
+        self._wakeup_event.clear()
 
-    async def _process(self) -> None:
+    def _process(self) -> None:
+        cnt = 0
         while not self._stop_event.is_set():
-            processed = await self._process_next()
+            processed = self._process_next()
             if not processed:
                 break
+            cnt += 1
+        if cnt == 0:
+            log.debug("no pending tasks")
+        else:
+            log.info("processed %d tasks", cnt)
 
-    @sync_to_async
     @transaction.atomic
     def _process_next(self) -> bool:
         task_qs = self._model.objects.filter(
@@ -84,7 +111,6 @@ class Worker:
         ).order_by("run_at", "id")
         task = task_qs.select_for_update(skip_locked=True).first()
         if not task:
-            log.debug("no pending tasks")
             return False
         self._process_one(task)
         return True
@@ -112,8 +138,8 @@ class Worker:
 
             post_task_execute.send(sender=self, task=task, exc=None)
             task.save()
-            log.info("the task %s is processed with success in %s", task.pk,
-                     task.finished_at - task.started_at)
+            log.info("the task %s is processed with success in %s",
+                     task.pk, task.finished_at - task.started_at)
 
         except Exception as exc:
             task.status = TaskStatus.FAILED
@@ -122,13 +148,12 @@ class Worker:
 
             post_task_execute.send(sender=self, task=task, exc=exc)
             task.save()
-            log.info("the task %s is processed with error in %s", task.pk,
-                     task.finished_at - task.started_at, exc_info=True)
+            log.info("the task %s is processed with error in %s",
+                     task.pk, task.finished_at - task.started_at, exc_info=True)
 
         finally:
             del _current_task.value
 
-    @sync_to_async
     @transaction.atomic
     def _delete_old(self) -> None:
         moment = timezone.now() - self._ttl

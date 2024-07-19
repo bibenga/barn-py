@@ -8,19 +8,19 @@ from barn.scheduler import Scheduler
 
 @pytest.mark.django_db(transaction=True)
 class TestScheduler:
-    async def test__process(self, mocker):
+    def test__process(self, mocker):
         _process_one = mocker.patch.object(Scheduler, "_process_one")
 
         scheduler = Scheduler()
-        await scheduler._process()
+        scheduler._process()
         _process_one.assert_not_called()
 
-        await Schedule.objects.acreate(cron="* * * * *", is_active=False)
-        await scheduler._process()
+        Schedule.objects.create(cron="* * * * *", is_active=False)
+        scheduler._process()
         _process_one.assert_not_called()
 
-        await Schedule.objects.acreate(cron="* * * * *")
-        await scheduler._process()
+        Schedule.objects.create(cron="* * * * *")
+        scheduler._process()
         _process_one.assert_called_once()
 
     def test__process_one_oneshot(self, mocker):

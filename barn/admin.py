@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import admin
+from django.db import transaction
 from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -26,15 +27,11 @@ except ImportError:
 class AbstractScheduleAdmin(admin.ModelAdmin):
     list_display = ("id", "is_active", "next_run_at", "interval", "cron")
     list_filter = ("is_active",)
-    ordering = ("-next_run_at",)
-    date_hierarchy = "next_run_at"
 
 
 class AbstractTaskAdmin(admin.ModelAdmin):
     list_display = ("id", "run_at", "colored_status")
-    list_filter = ("status",)
-    ordering = ("-run_at",)
-    date_hierarchy = "run_at"
+    list_filter = ("status", "run_at")
 
     @admin.display(empty_value="unknown", ordering="status")
     def colored_status(self, obj):
@@ -56,6 +53,7 @@ class AbstractTaskAdmin(admin.ModelAdmin):
 class ScheduleAdmin(AbstractScheduleAdmin):
     list_display = ("id", "name", "func", "is_active", "next_run_at", "interval", "cron")
     search_fields = ("name", "func")
+    ordering = ("name",)
     fields = ("name", "func", "args",  "is_active",
               "next_run_at", "interval", "cron", "last_run_at")
     readonly_fields = ()
@@ -74,22 +72,22 @@ class ScheduleAdmin(AbstractScheduleAdmin):
 class TaskAdmin(AbstractTaskAdmin):
     list_display = ("id", "func", "run_at", "colored_status")
     search_fields = ("func",)
-    date_hierarchy = "run_at"
     fields = ("func", "args", "run_at", "status", "started_at",
               "finished_at", "result", "error")
     readonly_fields = ()
     actions = ("rerun_task",)
 
     @admin.action(description="Rerun tasks")
+    @transaction.atomic
     def rerun_task(self, request, queryset):
         run_at = timezone.now()
         queryset = queryset.filter(status=TaskStatus.FAILED)
-        tasks = [Task(func=t.func, args=t.args, run_at=run_at) for t in queryset]
-        if tasks:
-            Task.objects.bulk_create(tasks)
-            self.message_user(request, f"{len(tasks)} tasks are created")
+        if not queryset.exists():
+            self.message_user(request, f"Tasks in status {TaskStatus.FAILED} weren't found")
         else:
-            self.message_user(request, f"No tasks are created")
+            for t in queryset:
+                nt = Task.objects.create(func=t.func, args=t.args, run_at=run_at)
+                self.message_user(request, f"The task {t.pk} is cloned as the task {nt.pk}")
 
     if pretty_json_field is not None:
         fields = list(fields)

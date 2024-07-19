@@ -25,7 +25,7 @@ def validate_cron(value):
 
 class AbstractSchedule(models.Model):
     is_active = models.BooleanField(default=True)
-    next_run_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    next_run_at = models.DateTimeField(null=True, blank=True)
     interval = models.DurationField(null=True, blank=True)
     cron = models.CharField(max_length=200, null=True, blank=True, validators=[validate_cron],
                             help_text="Exactly 5 or 6 columns has to be specified for iterator expression")
@@ -58,7 +58,7 @@ class TaskStatus(models.TextChoices):
 
 
 class AbstractTask(models.Model):
-    run_at = models.DateTimeField(db_index=True, blank=True)
+    run_at = models.DateTimeField(blank=True)
     status = models.CharField(max_length=1, choices=TaskStatus.choices, default=TaskStatus.QUEUED)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -69,10 +69,6 @@ class AbstractTask(models.Model):
 
     def __str__(self) -> str:
         return f"task:{self.pk}"
-
-    # def clean(self) -> None:
-    #     self.run_at = self.run_at or timezone.now()
-    #     return super().clean()
 
     def save(self, *args, **kwargs) -> None:
         self.run_at = self.run_at or timezone.now()
@@ -90,9 +86,6 @@ class Schedule(AbstractSchedule):
     def __str__(self) -> str:
         return f"{self.name}"
 
-    # def clean(self) -> None:
-    #     self.name = self.name or self.func
-
     def save(self, *args, **kwargs) -> None:
         self.name = self.name or self.func
         super().save(*args, **kwargs)
@@ -106,6 +99,18 @@ class Task(AbstractTask):
     func = models.CharField(max_length=1000)
     args = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
+
+    class Meta(AbstractTask.Meta):
+        indexes = [
+            # models.Index(fields=("run_at",)),
+            # used by barn.worker:
+            # models.Index(fields=("status", "run_at")),
+            models.Index(
+                name="barn_task_find_next_idx",
+                fields=("run_at", ),
+                condition=models.Q(status=TaskStatus.QUEUED),
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.func}"
