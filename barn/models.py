@@ -103,7 +103,13 @@ class Task(AbstractTask):
     class Meta(AbstractTask.Meta):
         indexes = [
             # models.Index(fields=("run_at",)),
-            models.Index(fields=("status", "run_at")),
+            # used by barn.worker:
+            # models.Index(fields=("status", "run_at")),
+            models.Index(
+                name="barn_task_find_next_idx",
+                fields=("run_at", ),
+                condition=models.Q(status=TaskStatus.QUEUED),
+            ),
         ]
 
     def __str__(self) -> str:
