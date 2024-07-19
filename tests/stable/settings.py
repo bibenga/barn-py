@@ -27,7 +27,9 @@ LOGGING = {
     },
     "loggers": {
         # "django.db": {"level": "DEBUG"}
-        "barn": {"level": "DEBUG"}
+        "barn": {"level": "DEBUG"},
+        # "barn.worker": {"level": "ERROR"},
+        # "barn.bus": {"level": "ERROR"},
     },
     "root": {
         "level": "INFO",
@@ -161,5 +163,6 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000
 # BARN
 # BARN_TASK_SYNC = True
 BARN_BUS = DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql"
+# BARN_BUS = False
 BARN_SCHEDULE_POLL_INTERVAL = 5
 BARN_TASL_POLL_INTERVAL = 5

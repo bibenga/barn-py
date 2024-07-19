@@ -102,6 +102,7 @@ class Command(BaseCommand):
             log.warning("nothing to run")
             return
 
+        self._stats_lock = threading.Lock()
         self._stats = Counter()
 
         log.info("start")
@@ -131,10 +132,25 @@ class Command(BaseCommand):
                 worker.start()
                 time.sleep(1)
 
+        with self._stats_lock:
+            prev_stats = self._stats.copy()
+
+        timeout = 1
         while not self._stop_event.is_set():
-            if not self._stop_event.wait(5):
+            if not self._stop_event.wait(timeout):
                 if self.is_alive():
-                    log.debug("I am alive: %s", self._stats)
+                    # log.debug("I am alive")
+                    with self._stats_lock:
+                        stats = self._stats.copy()
+                    rps: dict[str, float] = {
+                        k: v / timeout
+                        for k, v in (stats - prev_stats).items()
+                    }
+                    prev_stats = stats
+                    if rps:
+                        log.info("rps: %s", rps)
+                    else:
+                        log.debug("I am alive")
                 else:
                     break
 
@@ -176,8 +192,10 @@ class Command(BaseCommand):
 
     def _on_schedule_executed(self, sender, schedule: AbstractSchedule, **kwargs) -> None:
         model = f"{schedule._meta.app_label}.{schedule._meta.model_name}"
-        self._stats[model] += 1
+        with self._stats_lock:
+            self._stats[model] += 1
 
     def _on_task_executed(self, sender, task: AbstractTask, **kwargs) -> None:
         model = f"{task._meta.app_label}.{task._meta.model_name}"
-        self._stats[model] += 1
+        with self._stats_lock:
+            self._stats[model] += 1
