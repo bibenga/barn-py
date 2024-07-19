@@ -44,7 +44,7 @@ class Worker:
     def start(self) -> None:
         self._stop_event.clear()
         self._wakeup_event.clear()
-        self._thread = threading.Thread(target=self._run, name=self._name)
+        self._thread = threading.Thread(target=self.run, name=self._name)
         self._thread.start()
         remote_post_save.connect(self._on_remote_post_save)
 
@@ -54,6 +54,9 @@ class Worker:
             self._stop_event.set()
             self._wakeup_event.set()
             self._thread.join(5)
+
+    def wakeup(self) -> None:
+        self._wakeup_event.set()
 
     def is_alive(self) -> bool:
         return self._thread and self._thread.is_alive()
@@ -65,18 +68,21 @@ class Worker:
             self._wakeup_event.set()
 
     def run(self) -> None:
-        self._run()
-
-    def _run(self) -> None:
         log.info("stated")
         try:
-            while not self._stop_event.is_set():
-                self._process()
-                if self._ttl:
-                    self._delete_old()
-                self._sleep()
+            self._run()
+        except:
+            log.fatal("failed")
+            raise
         finally:
             log.info("finished")
+
+    def _run(self) -> None:
+        while not self._stop_event.is_set():
+            self._process()
+            if self._ttl:
+                self._delete_old()
+            self._sleep()
 
     def _sleep(self) -> None:
         jitter = self._interval / 10
@@ -86,10 +92,16 @@ class Worker:
         self._wakeup_event.clear()
 
     def _process(self) -> None:
+        cnt = 0
         while not self._stop_event.is_set():
             processed = self._process_next()
             if not processed:
                 break
+            cnt += 1
+        if cnt == 0:
+            log.debug("no pending tasks")
+        else:
+            log.debug("processed %d tasks", cnt)
 
     @transaction.atomic
     def _process_next(self) -> bool:
@@ -99,7 +111,6 @@ class Worker:
         ).order_by("run_at", "id")
         task = task_qs.select_for_update(skip_locked=True).first()
         if not task:
-            log.debug("no pending tasks")
             return False
         self._process_one(task)
         return True

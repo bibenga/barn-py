@@ -44,7 +44,7 @@ class Scheduler:
     def start(self) -> None:
         self._stop_event.clear()
         self._wakeup_event.clear()
-        self._thread = threading.Thread(target=self._run, name="scheduler")
+        self._thread = threading.Thread(target=self.run, name="scheduler")
         self._thread.start()
         remote_post_save.connect(self._on_remote_post_save)
 
@@ -54,6 +54,9 @@ class Scheduler:
             self._stop_event.set()
             self._wakeup_event.set()
             self._thread.join(5)
+
+    def wakeup(self) -> None:
+        self._wakeup_event.set()
 
     def is_alive(self) -> bool:
         return self._thread and self._thread.is_alive()
@@ -65,18 +68,21 @@ class Scheduler:
             self._wakeup_event.set()
 
     def run(self) -> None:
-        self._run()
-
-    def _run(self) -> None:
         log.info("stated")
         try:
-            while not self._stop_event.is_set():
-                self._process()
-                if self._ttl:
-                    self._delete_old()
-                self._sleep()
+            self._run()
+        except:
+            log.fatal("failed")
+            raise
         finally:
             log.info("finished")
+
+    def _run(self) -> None:
+        while not self._stop_event.is_set():
+            self._process()
+            if self._ttl:
+                self._delete_old()
+            self._sleep()
 
     def _sleep(self) -> None:
         jitter = self._interval / 10
@@ -91,12 +97,15 @@ class Scheduler:
             Q(next_run_at__isnull=True) | Q(next_run_at__lt=timezone.now()),
             is_active=True,
         ).order_by("next_run_at", "id")
-        processed = 0
+        cnt = 0
         for schedule in schedule_qs.select_for_update(skip_locked=True):
             self._process_one(schedule)
-            processed += 1
-        if processed == 0:
+            cnt += 1
+        if cnt == 0:
             log.debug("no pending schedules")
+        else:
+            log.debug("processed %d schedules", cnt)
+
 
     def _process_one(self, schedule: AbstractSchedule) -> None:
         log.info("found a schedule %s", schedule.pk)

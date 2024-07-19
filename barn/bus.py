@@ -28,7 +28,7 @@ class PgBus:
 
     def start(self) -> None:
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, name="pg_bus")
+        self._thread = threading.Thread(target=self.run, name="pg_bus")
         self._thread.start()
 
     def stop(self) -> None:
@@ -40,25 +40,28 @@ class PgBus:
         return self._thread and self._thread.is_alive()
 
     def run(self) -> None:
-        self._run()
+        log.info("stated")
+        try:
+            self._run()
+        except:
+            log.fatal("failed")
+            raise
+        finally:
+            log.info("finished")
 
     def _run(self) -> None:
-        log.info("listener stated")
-        try:
-            with connection.cursor() as cursor:
-                # a prepared statement is not supported for LISTEN operation
-                cursor.execute(f"LISTEN {Conf.BUS_CHANNEL};")
-                con = cursor.connection
-                while not self._stop_event.is_set():
-                    gen = con.notifies(timeout=5)
-                    any_event = False
-                    for event in gen:
-                        self._send(event)
-                        any_event = True
-                    if not any_event:
-                        log.debug("timeout...")
-        finally:
-            log.info("listener finished")
+        with connection.cursor() as cursor:
+            # a prepared statement is not supported for LISTEN operation
+            cursor.execute(f"LISTEN {Conf.BUS_CHANNEL};")
+            con = cursor.connection
+            while not self._stop_event.is_set():
+                gen = con.notifies(timeout=5)
+                any_event = False
+                for event in gen:
+                    self._send(event)
+                    any_event = True
+                if not any_event:
+                    log.debug("timeout...")
 
     def _send(self, event) -> None:
         # event: psycopg.Notify
