@@ -102,9 +102,13 @@ class Task(AbstractTask):
 
     class Meta(AbstractTask.Meta):
         indexes = [
-            # models.Index(fields=("run_at",)),
             # used by barn.worker:
-            # models.Index(fields=("status", "run_at")),
+            # models.Index(fields=("status", "run_at")), # does not used with Q(status__in=[TaskStatus.DONE, TaskStatus.FAILED])
+            models.Index(
+                name="barn_task_delete_idx",
+                fields=("run_at", ),
+                condition=models.Q(status__in=[TaskStatus.DONE, TaskStatus.FAILED]),
+            ),
             models.Index(
                 name="barn_task_find_next_idx",
                 fields=("run_at", ),

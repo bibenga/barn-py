@@ -108,7 +108,7 @@ class Worker:
         task_qs = self._model.objects.filter(
             run_at__lt=timezone.now(),
             status=TaskStatus.QUEUED,
-        ).order_by("run_at", "id")
+        ).order_by("run_at")
         task = task_qs.select_for_update(skip_locked=True).first()
         if not task:
             return False

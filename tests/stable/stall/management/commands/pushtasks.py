@@ -12,8 +12,12 @@ log = logging.getLogger(__name__)
 
 
 # from barn.models import Task, TaskStatus
+# from django.db.models import Q
 # from django.utils import timezone
 # Task.objects.filter(run_at__lt=timezone.now(), status=TaskStatus.QUEUED).order_by("run_at", "id").explain()
+# Task.objects.filter(run_at__lt=timezone.now(), status__in=[TaskStatus.DONE, TaskStatus.FAILED]).explain()
+# Task.objects.filter(Q(run_at__lt=timezone.now()), Q(status=TaskStatus.DONE) | Q(status=TaskStatus.FAILED)).explain()
+# Task.objects.filter(run_at__lt=timezone.now(), status=TaskStatus.DONE).explain()
 
 class Command(BaseCommand):
 
