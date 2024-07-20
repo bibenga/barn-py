@@ -5,7 +5,7 @@ import time
 from collections import Counter
 from typing import Type
 
-from django.contrib.contenttypes.models import ContentType
+from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.db import models
 from django.utils import autoreload
@@ -111,11 +111,6 @@ class Command(BaseCommand):
             for sig in [signal.SIGTERM, signal.SIGINT]:
                 signal.signal(sig, self._sig_handler)
 
-        self._bus: PgBus | None = None
-        if Conf.BUS or with_bus:
-            self._bus = PgBus()
-            self._bus.start()
-
         self._scheduler: Scheduler | None = None
         if with_scheduler:
             post_schedule_execute.connect(self._on_schedule_executed)
@@ -131,6 +126,16 @@ class Command(BaseCommand):
                 self._workers.append(worker)
                 worker.start()
                 time.sleep(0.2)
+
+        self._bus: PgBus | None = None
+        if Conf.BUS_ENABLED or with_bus:
+            bus_models: list[Type[AbstractSchedule] | Type[AbstractTask]] = []
+            if with_scheduler:
+                bus_models.append(scheduler_model)
+            if worker_count > 0:
+                bus_models.append(task_model)
+            self._bus = PgBus(*bus_models)
+            self._bus.start()
 
         with self._stats_lock:
             prev_stats = self._stats.copy()
@@ -153,14 +158,14 @@ class Command(BaseCommand):
                 else:
                     break
 
+        if self._bus:
+            self._bus.stop()
+
         for worker in self._workers:
             worker.stop()
 
         if self._scheduler:
             self._scheduler.stop()
-
-        if self._bus:
-            self._bus.stop()
 
         log.info("stop")
 
@@ -169,11 +174,8 @@ class Command(BaseCommand):
         self._stop_event.set()
 
     def _get_model(self, name: str) -> Type[models.Model]:
-        app, _, model = name.partition('.')
-        clazz = ContentType.objects.get_by_natural_key(app, model).model_class()
-        if clazz is None:
-            raise ValueError(name)
-        return clazz
+        app_label, _, model_name = name.partition('.')
+        return apps.get_model(app_label, model_name)
 
     def is_alive(self) -> bool:
         if self._bus and not self._bus.is_alive():

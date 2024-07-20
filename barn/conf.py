@@ -5,12 +5,12 @@ from django.utils.functional import classproperty
 
 class Conf:
     @classproperty
-    def BUS(cls) -> bool:
-        return getattr(settings, "BARN_BUS", False)
+    def BUS_ENABLED(cls) -> bool:
+        return getattr(settings, "BARN_BUS_ENABLED", False)
 
     @classproperty
     def BUS_CHANNEL(cls) -> str:
-        return getattr(settings, "BARN_BUS_CHANNEL", "barn")
+        return getattr(settings, "BARN_BUS_CHANNEL", "barn_%(app_label)s_%(model_name)s")
 
     @classproperty
     def SCHEDULE_POLL_INTERVAL(cls) -> timedelta:

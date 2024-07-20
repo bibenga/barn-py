@@ -1,9 +1,10 @@
 import json
 import logging
 import threading
+from datetime import timedelta
 from typing import Type
 
-from django.contrib.contenttypes.models import ContentType
+from django.apps import apps
 from django.db import connection
 from django.db.models.signals import post_save
 from django.utils import timezone
@@ -16,9 +17,8 @@ log = logging.getLogger(__name__)
 
 
 class PgBus:
-    def __init__(
-        self,
-    ) -> None:
+    def __init__(self, *listen_models: Type[AbstractTask | AbstractSchedule]) -> None:
+        self._models = listen_models
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -50,18 +50,38 @@ class PgBus:
             log.info("finished")
 
     def _run(self) -> None:
+        if not self._models:
+            raise ValueError("the models is not provided")
+
+        channels = {
+            Conf.BUS_CHANNEL % {
+                "app_label": model._meta.app_label,
+                "model_name": model._meta.model_name,
+            }
+            for model in self._models
+        }
+
         with connection.cursor() as cursor:
             # a prepared statement is not supported for LISTEN operation
-            cursor.execute(f"LISTEN {Conf.BUS_CHANNEL};")
-            con = cursor.connection
-            while not self._stop_event.is_set():
-                gen = con.notifies(timeout=5)
-                any_event = False
-                for event in gen:
-                    self._send(event)
-                    any_event = True
-                if not any_event:
-                    log.debug("timeout...")
+            for channel in channels:
+                log.info("listen on %r", channel)
+                cursor.execute(f"LISTEN {channel};")
+            try:
+                con = cursor.connection
+                while not self._stop_event.is_set():
+                    cnt = 0
+                    gen = con.notifies(timeout=5)
+                    for event in gen:
+                        self._send(event)
+                        cnt += 1
+                    if cnt > 0:
+                        log.info("processed %d events", cnt)
+                    else:
+                        log.debug("i am alive...")
+            finally:
+                for channel in channels:
+                    log.info("unlisten from %s", channel)
+                    cursor.execute(f"UNLISTEN {channel};")
 
     def _send(self, event) -> None:
         # event: psycopg.Notify
@@ -72,22 +92,36 @@ class PgBus:
             log.warning("invalid notification payload: %s", event.payload)
         else:
             model_key = payload["model"]
-            app_label, model = model_key.split(".")
-            model = ContentType.objects.get_by_natural_key(app_label, model).model_class()
+            app_label, model_name = model_key.split(".")
+            model = apps.get_model(app_label, model_name)
             instance_pk = payload["pk"]
             remote_post_save.send(sender=self, model=model, pk=instance_pk, event=payload["event"])
 
     @classmethod
-    def connect(
-        cls,
-        task_model: Type[AbstractTask] | None,
-        schedule_model: Type[AbstractSchedule] | None,
-    ) -> None:
-        if Conf.BUS:
-            if task_model:
-                post_save.connect(cls._on_task_post_save, sender=task_model)
-            if schedule_model:
-                post_save.connect(cls._on_schedule_post_save, sender=schedule_model)
+    def connect(cls, *models: Type[AbstractTask | AbstractSchedule]) -> None:
+        if not Conf.BUS_ENABLED:
+            return
+        for model in models:
+            log.info("connect post_save listener to %s", model)
+            if issubclass(model, AbstractTask):
+                post_save.connect(cls._on_task_post_save, sender=model)
+            elif issubclass(model, AbstractSchedule):
+                post_save.connect(cls._on_schedule_post_save, sender=model)
+            else:
+                raise ValueError(f"the model '{model}' is invalid")
+
+    @classmethod
+    def disconnect(cls, *models: Type[AbstractTask | AbstractSchedule]) -> None:
+        if not Conf.BUS_ENABLED:
+            return
+        for model in models:
+            log.info("disconnect post_save listener from %s", model)
+            if issubclass(model, AbstractTask):
+                post_save.disconnect(cls._on_task_post_save, sender=model)
+            elif issubclass(model, AbstractSchedule):
+                post_save.disconnect(cls._on_schedule_post_save, sender=model)
+            else:
+                raise ValueError(f"the model '{model}' is invalid")
 
     @classmethod
     def _on_task_post_save(cls, sender, instance: AbstractTask, created: bool, **kwargs) -> None:
@@ -95,7 +129,7 @@ class PgBus:
         if instance.status != TaskStatus.QUEUED:
             log.debug("the task %s is not in %s status", instance.pk, TaskStatus.QUEUED)
             return
-        if instance.run_at > timezone.now():
+        if instance.run_at > (timezone.now() + timedelta(microseconds=1)):
             log.debug("the task %s is in the future: %s", instance.pk, instance.run_at)
             return
         cls._enqueue_remote_post_save(instance, created)
@@ -113,13 +147,15 @@ class PgBus:
 
     @classmethod
     def _enqueue_remote_post_save(cls, instance: AbstractTask | AbstractSchedule, created: bool) -> None:
+        app_label, model_name = instance._meta.app_label, instance._meta.model_name
         data = {
             "version": "1.0.0",
-            "model": f"{instance._meta.app_label}.{instance._meta.model_name}",
+            "model": f"{app_label}.{model_name}",
             "pk": instance.pk,
             "event": "create" if created else "update",
         }
         payload = json.dumps(data, ensure_ascii=False)
-        log.info("a message is sent in the %s channel: %s", Conf.BUS_CHANNEL, payload)
+        channel = Conf.BUS_CHANNEL % {"app_label": app_label, "model_name": model_name}
+        log.info("a message is sent in the %s channel: %s", channel, payload)
         with connection.cursor() as cursor:
-            cursor.execute("select pg_notify(%s, %s)", [Conf.BUS_CHANNEL, payload])
+            cursor.execute("select pg_notify(%s, %s)", [channel, payload])

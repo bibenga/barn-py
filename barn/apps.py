@@ -1,4 +1,6 @@
-from django.apps import AppConfig
+from django.apps import AppConfig, apps
+
+from barn.conf import Conf
 
 
 class BarnConfig(AppConfig):

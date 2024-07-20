@@ -68,7 +68,7 @@ class Worker:
             self._wakeup_event.set()
 
     def run(self) -> None:
-        log.info("stated")
+        log.info("stated with the model %s", self._model)
         try:
             self._run()
         except:
