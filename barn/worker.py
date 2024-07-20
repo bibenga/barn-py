@@ -106,8 +106,8 @@ class Worker:
     @transaction.atomic
     def _process_next(self) -> bool:
         task_qs = self._model.objects.filter(
-            run_at__lt=timezone.now(),
             status=TaskStatus.QUEUED,
+            run_at__lt=timezone.now(),
         ).order_by("run_at")
         task = task_qs.select_for_update(skip_locked=True).first()
         if not task:
@@ -159,7 +159,7 @@ class Worker:
         moment = timezone.now() - self._ttl
         task_qs = self._model.objects.filter(
             status__in=[TaskStatus.DONE, TaskStatus.FAILED],
-            run_at__lt=moment
+            run_at__lt=moment,
         )
         deleted, _ = task_qs.delete()
         log.log(
