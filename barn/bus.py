@@ -102,7 +102,7 @@ class PgBus:
         if not Conf.BUS_ENABLED:
             return
         for model in models:
-            log.info("connect post_save listener to %s", model)
+            log.info("connect to post_save on %s", model)
             if issubclass(model, AbstractTask):
                 post_save.connect(cls._on_task_post_save, sender=model)
             elif issubclass(model, AbstractSchedule):
@@ -115,7 +115,7 @@ class PgBus:
         if not Conf.BUS_ENABLED:
             return
         for model in models:
-            log.info("disconnect post_save listener from %s", model)
+            log.info("disconnect from post_save on %s", model)
             if issubclass(model, AbstractTask):
                 post_save.disconnect(cls._on_task_post_save, sender=model)
             elif issubclass(model, AbstractSchedule):
